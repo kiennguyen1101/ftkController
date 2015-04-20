@@ -1,0 +1,8 @@
+group_id, group_name
+msdoc_extensions,Office Extensions
+otherdoc_extensions,Other Doc Extensions
+image_extensions,Image Extensions
+compressed_extensions,Compressed Extensions
+video_extensions,Video Extensions 
+audio_extensions,Audio Extensions 
+other_extensions,Other Extensions 

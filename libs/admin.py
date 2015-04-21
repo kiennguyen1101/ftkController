@@ -29,7 +29,7 @@ def isUserAdmin():
         raise RuntimeError, "Unsupported operating system for this module: %s" % (os.name,)
 
 
-def runAsAdmin(cmdLine=None, wait=True):
+def runAsAdmin(cmdLine=None, wait=True, showCmd=True):
     if os.name != 'nt':
         raise RuntimeError, "This function is only implemented on Windows."
 
@@ -47,8 +47,10 @@ def runAsAdmin(cmdLine=None, wait=True):
     # XXX TODO: isn't there a function or something we can call to massage command line params?
     params = " ".join(['"%s"' % (x,) for x in cmdLine[1:]])
     cmdDir = ''
-    showCmd = win32con.SW_SHOWNORMAL
-    # showCmd = win32con.SW_HIDE
+    if showCmd:
+        nShow = win32con.SW_SHOWNORMAL
+    else:
+        nShow = win32con.SW_HIDE
     lpVerb = 'runas'  # causes UAC elevation prompt.
 
     # print "Running", cmd, params
@@ -59,7 +61,7 @@ def runAsAdmin(cmdLine=None, wait=True):
 
     # procHandle = win32api.ShellExecute(0, lpVerb, cmd, params, cmdDir, showCmd)
 
-    procInfo = ShellExecuteEx(nShow=showCmd,
+    procInfo = ShellExecuteEx(nShow=nShow,
                               fMask=shellcon.SEE_MASK_NOCLOSEPROCESS,
                               lpVerb=lpVerb,
                               lpFile=cmd,

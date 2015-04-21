@@ -1,7 +1,9 @@
 import time
 import os
+import traceback
 
 import pywinauto
+
 
 
 
@@ -46,7 +48,7 @@ class FTKController(object):
                 return False
             self.imager = self.pwa_app.window_(handle=w_handle)
             return True
-            
+
     def ExitFTK(self):
         self.imager.TypeKeys("%f x", 0.05)
 
@@ -57,14 +59,15 @@ class FTKController(object):
         try:
             for item in self.imager.Children():
                 if type(item) is pywinauto.controls.common_controls.ListViewWrapper:
-                    # print item.Texts()
                     # print item.ItemCount()
                     # Check if the item's text list contains this string
                     #print any("Include Subdirectories" in s for s in item.Texts())
                     if any("Include Subdirectories" in s for s in item.Texts()):
+                        print "custom content found!"
                         self.custom_content = item
                         return True
         except:
+            print traceback.format_exc()
             return False
 
     def AddExtension(self, path, extensions):
@@ -82,7 +85,7 @@ class FTKController(object):
                     title=u'Wild Card Options')
                 editor = self.pwa_app.window_(handle=w_handle)
                 editor.Edit.Select()
-                source = '%s*%s' % (path, item)
+                source = '%s*.%s' % (path, item)
                 editor.Edit.SetEditText(source)
                 editor['&OK'].Click()
                 self.custom_content.Deselect(pos)
@@ -92,6 +95,13 @@ class FTKController(object):
             self.Gdial.Update(100)
         except Exception:
             pass
+
+    def ExtensionAddFinish(self):
+        self.imager.Restore()
+        w_handle = pywinauto.findwindows.find_windows(
+            title=u'FTK Controller')[0]
+        window = self.pwa_app.window_(handle=w_handle)
+        window.SetFocus()
 
     def CreateImage(self):
         if not self.FTKImager.imager['&Create Image'].IsEnabled():
@@ -131,3 +141,14 @@ class FTKController(object):
         
         createWindow['&Start'].Click()
         self.ShowNotification('Image created: ' + dataPath + '\\' + fileName + '.ad1')
+
+    def RemoveAll(self):
+        try:
+            if self.imager['&Remove All'].IsEnabled():
+                self.imager['&Remove All'].Click()
+                w_handle = pywinauto.findwindows.find_windows(
+                    title=u'FTK Imager')[0]
+                window = self.pwa_app.window_(handle=w_handle)
+                window['&Yes'].Click()
+        except Exception:
+            pass

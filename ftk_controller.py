@@ -1,11 +1,7 @@
 import time
 import os
 import traceback
-
 import pywinauto
-
-
-
 
 ########################################################################
 class FTKController(object):
@@ -70,31 +66,24 @@ class FTKController(object):
             print traceback.format_exc()
             return False
 
-    def AddExtension(self, path, extensions):
+    def AddExtension(self, path, extension):
         try:
             pos = self.custom_content.ItemCount()
-            percentage = 1 / float(len(extensions)) * 100
-            count = percentage
-            for item in extensions:
-                ctrl = self.imager['&New']
-                ctrl.Click()
-                self.custom_content.Select(pos)
-                ctrl = self.imager['&Edit']
-                ctrl.Click()
-                w_handle = pywinauto.findwindows.find_window(
-                    title=u'Wild Card Options')
-                editor = self.pwa_app.window_(handle=w_handle)
-                editor.Edit.Select()
-                source = '%s*.%s' % (path, item)
-                editor.Edit.SetEditText(source)
-                editor['&OK'].Click()
-                self.custom_content.Deselect(pos)
-                pos += 1
-                self.Gdial.Update(count)
-                count += percentage
-            self.Gdial.Update(100)
+            ctrl = self.imager['&New']
+            ctrl.Click()
+            self.custom_content.Select(pos)
+            ctrl = self.imager['&Edit']
+            ctrl.Click()
+            w_handle = pywinauto.findwindows.find_window(
+                title=u'Wild Card Options')
+            editor = self.pwa_app.window_(handle=w_handle)
+            editor.Edit.Select()
+            source = '%s*.%s' % (path, extension)
+            editor.Edit.SetEditText(source)
+            editor['&OK'].Click()
+            self.custom_content.Deselect(pos)
         except Exception:
-            pass
+            print traceback.format_exc()
 
     def ExtensionAddFinish(self):
         self.imager.Restore()

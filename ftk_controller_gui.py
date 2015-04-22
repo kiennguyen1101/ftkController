@@ -2,15 +2,13 @@
 import string
 import os
 import ConfigParser
-import ctypes
 import time
 from collections import OrderedDict
 import csv
+import traceback
 import wx
 from ftk_controller import FTKController
 from libs import admin
-import pywinauto
-import traceback
 
 class FTKControllerGUI(wx.Frame):
     APP_EXTENSION = 12
@@ -273,14 +271,14 @@ class PageMain(wx.Panel):
         filePath = self.ReadConfig()
         self.FTKImager = FTKController()
 
-        if self.FTKImager.CheckFTKImagerStarted():
-            return
+        if not admin.isUserAdmin():
+            self.ShowError("This program needs to be started as administrator")
+            # rc = admin.runAsAdmin(cmdLine=("C:\Program Files (x86)\AccessData\FTK Imager\FTK Imager.exe", ""))
+            admin.runAsAdmin()
+            exit(0)
         else:
-            if not admin.isUserAdmin():
-                self.ShowError("This program needs to be started as administrator")
-                # rc = admin.runAsAdmin(cmdLine=("C:\Program Files (x86)\AccessData\FTK Imager\FTK Imager.exe", ""))
-                admin.runAsAdmin()
-                exit(0)
+            if self.FTKImager.CheckFTKImagerStarted():
+                return
             else:
                 for i in range(0, 15):
                     if self.FTKImager.StartProgramElavated(filePath):
@@ -390,7 +388,15 @@ class PageMain(wx.Panel):
             self.Gdial = wx.ProgressDialog('Adding extensions', 'Adding extensions',
                                            maximum=100, parent=self, style=wx.PD_APP_MODAL | wx.PD_CAN_ABORT
                                                                            | wx.PD_SMOOTH)
-            self.FTKImager.AddExtension(path, extensions)
+            percentage = 1 / float(len(extensions)) * 100
+            count = percentage
+            for item in extensions:
+                self.FTKImager.AddExtension(path, item)
+                # Update() returns a tuple of bool (continue, skip)
+                if not self.Gdial.Update(count)[0]:
+                    break
+                count += percentage
+            self.Gdial.Update(100)
             self.Gdial.Destroy()
             self.FTKImager.ExtensionAddFinish()
         except Exception, err:

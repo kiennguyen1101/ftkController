@@ -1,7 +1,6 @@
 #! /usr/local/bin/python  -*- coding: UTF-8 -*-
 import wx
 import ftk_controller_gui
-from libs import admin
 
 app = wx.App()
 title_u = u'FTK Controller'

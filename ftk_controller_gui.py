@@ -435,3 +435,21 @@ class PageUSB(wx.Panel):
     def __init__(self, parent):
         """Constructor"""
         wx.Panel.__init__(self, parent)
+        panel = wx.Panel(self, -1)
+        label1 = wx.StaticText(panel, -1, "Size:")
+        label2 = wx.StaticText(panel, -1, "Pos:")
+        self.sizeCtrl = wx.TextCtrl(panel, -1, "", style=wx.TE_READONLY)
+        self.posCtrl = wx.TextCtrl(panel, -1, "", style=wx.TE_READONLY)
+        self.panel = panel
+
+        # Use some sizers for layout of the widgets
+        sizer = wx.FlexGridSizer(2, 2, 5, 5)
+        sizer.Add(label1)
+        sizer.Add(self.sizeCtrl)
+        sizer.Add(label2)
+        sizer.Add(self.posCtrl)
+
+        border = wx.BoxSizer()
+        border.Add(sizer, 0, wx.ALL, 15)
+        panel.SetSizerAndFit(border)
+        self.Fit()

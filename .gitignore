@@ -14,6 +14,8 @@ libs/PyInstaller-2.1/
 *.exe
 *.o
 *.so
+*.pyc
+*.pyd
  
 # Packages #
 ############

@@ -12,14 +12,14 @@ import wx
 import time
 import pywinauto
 
+menuItems = ('Add Path')
 
 class TreeFrame(wx.Frame):
     def __init__(self):
 
-        self.frame = wx.Frame.__init__(self, None, title='FTK Imager Evidence Tree')
+        self.Frame = wx.Frame.__init__(self, None, title='FTK Imager Evidence Tree')
 
-
-        self.tree_ctrl = wx.TreeCtrl(self, -1, style=wx.TR_DEFAULT_STYLE | \
+        self.tree_ctrl = wx.TreeCtrl(self, -1, style=wx.TR_DEFAULT_STYLE | wx.TR_TWIST_BUTTONS |\
                                                 wx.TR_FULL_ROW_HIGHLIGHT | \
                                                 wx.TR_EDIT_LABELS| wx.TR_HIDE_ROOT )
 
@@ -41,7 +41,9 @@ class TreeFrame(wx.Frame):
         self.root = self.tree_ctrl.AddRoot('Evidences')
         if len(evidenceTree.Roots()) <= 0:
             imager.TypeKeys("%f l", 0.05)
+            busyDlg = wx.BusyInfo("Please wait")
             time.sleep(1)
+            busyDlg.Destroy()
 
         for child in evidenceTree.Roots():
             # self.tree_ctrl.AppendItem(self.root, child.Text())
@@ -52,8 +54,8 @@ class TreeFrame(wx.Frame):
         self.Centre()
         # register the self.onActivated function to be called on double click
         wx.EVT_TREE_ITEM_ACTIVATED(self.tree_ctrl, self.tree_ctrl.GetId(), self.onActivated)
-        wx.EVT_TREE_ITEM_RIGHT_CLICK(self.tree_ctrl, self.tree_ctrl.GetId(), self.onActivated)
-        self.Bind(wx.EVT_TREE_KEY_DOWN, self.onKeyDown)
+        wx.EVT_TREE_ITEM_RIGHT_CLICK(self.tree_ctrl, self.tree_ctrl.GetId(), self.onRightClick)
+        wx.EVT_TREE_KEY_DOWN(self.tree_ctrl, self.tree_ctrl.GetId(), self.onKeyDown)
         self._menu = None
 
         # ### 2. Launcher creates wxMenu. ###
@@ -69,7 +71,17 @@ class TreeFrame(wx.Frame):
 
     def onKeyDown(self, event):
         print "asdfsadf"
+        print event.GetKeyCode()
         print event.GetItem()
+
+    def onRightClick(self, event):
+        print self.tree_ctrl.GetItemText(event.GetItem())
+        menu = wx.Menu()
+        id = wx.NewId()
+        menu.Append(id, "Hello")
+        wx.EVT_MENU(menu, id , self.MenuSelectionCb)
+        self.PopupMenu(menu, event.GetPoint())
+        menu.Destroy()
 
     def onActivated(self, event):
         ### 1. Get what is clicked/selected
@@ -84,6 +96,7 @@ class TreeFrame(wx.Frame):
     def MenuSelectionCb(self, event):
         # do something
         print "asdflkj"
+        print event.GetString()
 
     def recursiveAdd(self, root, parent, _output=None):
         if _output is None:

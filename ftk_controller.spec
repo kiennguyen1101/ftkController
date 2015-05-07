@@ -11,7 +11,7 @@ exe = EXE(pyz,
           debug=False,
           strip=None,
           upx=True,
-          console=False )
+          console=False, manifest='ftk_controller.exe.manifest' )
 
 coll = COLLECT(exe,
                a.binaries,			   

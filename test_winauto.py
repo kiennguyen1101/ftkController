@@ -34,14 +34,10 @@ imager.SetFocus()
 # failed!
 def ftkMainBar():
     for item in imager.Children():
-        # if 'ProfUIS-DockBar' in item.FriendlyClassName() and any('Tool' in s for s in item.Texts()):
-        #     print item.GetProperties()
-        #     print item
-        if 'ProfUIS-ControlBar' in item.FriendlyClassName() and not item.Texts()[0]:
-            print item
+        if any('Tool' in s for s in item.Texts()):
             print item.GetProperties()
-            for child in item.Children():
-                print child.Texts()
+            print item
+
 
 
 def ftkEvidenceTree():
@@ -109,8 +105,18 @@ def addAllEvidences():
 def removeAllEvidences():
     imager.TypeKeys("%f m", 0.08)
 
-ftkEvidenceTree()
+# ftkEvidenceTree()
 # addAllEvidences()
 # removeAllEvidences()
 # ftkMainBar()
-print time.time() - start_time, "seconds"
+# print imager.TreeView.Texts()
+# toolbar = imager.ToolBar.Children()[0]
+# rect = toolbar.ClientRect()
+# toolbar.ReleaseMouseInput(coords=(rect.left+44, rect.top+9))
+# print(toolbar.GetShowState())
+# imager.Restore()
+# imager.SetFocus()
+# imager.Wait('visible')
+# toolbar.Click(coords=(rect.left+44, rect.top+9))
+# imager.Minimize()
+# print time.time() - start_time, "seconds"

@@ -1,0 +1,6 @@
+rawwrite dd for windows version 0.6beta3.
+Written by John Newbigin <jn@it.swin.edu.au>
+This program is covered by terms of the GPL Version 2.
+
+Error opening input file: 123 The filename, directory name, or volume label syntax is incorrect
+executing the time dd command

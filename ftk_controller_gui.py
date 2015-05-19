@@ -9,15 +9,19 @@ import traceback
 import wx
 from ftk_controller import FTKController
 from libs import admin
+import wx.grid
 
+FTKImager = None
+
+# ----------------------------------------------------------------------
 class FTKControllerGUI(wx.Frame):
     APP_EXTENSION = 12
     APP_FTK_PATH = 13
 
     def __init__(self, *args, **kwargs):
         super(FTKControllerGUI, self).__init__(*args, **kwargs)
-        # Here we create a panel and a notebook on the panel
-        p = wx.Panel(self)
+        splitter = wx.SplitterWindow(self)
+        p = wx.Panel(splitter)
         nb = wx.Notebook(p)
 
         # create pages and append to notebook
@@ -27,13 +31,23 @@ class FTKControllerGUI(wx.Frame):
         nb.AddPage(usbPage, "USB")
 
         # sizer
-        sizer = wx.BoxSizer()
+        sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(nb, 1, wx.EXPAND)
         p.SetSizer(sizer)
 
+        # Create menu
         self.InitMenu()
-        self.Centre()
-        self.Show()
+
+        self.InitFTKImager()
+        self.GetExtensions()
+
+        leftP = LeftTree(splitter)
+        splitter.SplitVertically(leftP, p)
+        splitter.SetSashGravity(0.3)
+        # splitter.SetMinimumPaneSize(20)
+        sSizer = wx.BoxSizer(wx.VERTICAL)
+        sSizer.Add(splitter, 1, wx.EXPAND)
+        self.SetSizer(sSizer)
 
     def InitMenu(self):
         # Ccreate a menubar object.
@@ -82,17 +96,169 @@ class FTKControllerGUI(wx.Frame):
         self.Close()
         exit()
 
-
-    # ----------------------------------------------------------------------
     def OnOptionExtension(self, e):
         """"""
 
-
-    # ----------------------------------------------------------------------
     def OnOptionPath(self, e):
         """"""
 
 
+    def InitFTKImager(self):
+        filePath = self.ReadConfig()
+        FTKImager= FTKController()
+
+        if not admin.isUserAdmin():
+            self.ShowError("This program needs to be started as administrator")
+            # rc = admin.runAsAdmin(cmdLine=("C:\Program Files (x86)\AccessData\FTK Imager\FTK Imager.exe", ""))
+            admin.runAsAdmin()
+            exit(0)
+        else:
+            if FTKImager.CheckFTKImagerStarted():
+                return
+            else:
+                for i in range(0, 15):
+                    if FTKImager.StartProgramElavated(filePath):
+                        break
+                        time.sleep(0.5)
+
+                        # is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
+                        # if not is_admin:
+                        # self.ShowError("Please start FTK Imager first or run this program as administrator")
+                        # self.Close()
+
+
+    def ReadConfig(self, configFile='config.ini'):
+        FTK_IMAGER_PATH = False
+        try:
+            # read config.ini for path to FTK Imager
+            config = ConfigParser.ConfigParser(dict_type=MultiOrderedDict)
+            config.read(configFile)
+            path = config.get('DEFAULT', 'path')
+            for item in path:
+                if os.path.exists(item):
+                    FTK_IMAGER_PATH = item
+        except BaseException:
+            import sys
+
+            print "Unexpected error:", sys.exc_info()[0]
+            self.ShowError('Error reading file ' + configFile)
+            exit(0)
+        finally:
+            return FTK_IMAGER_PATH
+
+    def OnQuit(self, e):
+        # Show a dialog that ask user to confirm exit action, default to YES
+        dial = wx.MessageDialog(None, 'Do you want to close FTK Imager?', 'Question',
+                                wx.YES_NO | wx.YES_DEFAULT | wx.ICON_QUESTION)
+        if dial.ShowModal() == wx.ID_YES:
+            FTKImager.ExitFTK()
+        self.Close()
+        exit()
+
+    def OnClose(self, e):
+        self.Close()
+        exit()
+
+    def OnCheck(self, e):
+        # Get checkbox checked using GetEventObject()
+        ctrl = e.GetEventObject()
+        # Check for correct ID.
+        # If true: also set all other child checkboxes to corresponding value
+        for group, item in self.all_extensions.iteritems():
+            if ctrl.GetLabel() == group:
+                for k in item.iterkeys():
+                    self.CheckBoxes[k].SetValue(ctrl.GetValue())
+
+    def OnGetPath(self, e):
+        try:
+            if FTKImager.GetCustomContentSource(1):
+                itemCount = FTKImager.custom_content.ItemCount()
+
+            if not itemCount:
+                self.ShowError("Cannot select custom content list")
+                return
+            # Get path from the custom content first item
+            path = FTKImager.custom_content.GetItem(0)['text']
+            self.textPath.SetValue(path)
+            FTKImager.custom_content.Select(0)
+            if FTKImager.imager['&Remove'].IsEnabled():
+                FTKImager.imager['&Remove'].Click()
+                # w_handle = pywinauto.findwindows.find_windows(
+                # title=u'FTK Imager')[0]
+                #window = self.pwa_app.window_(handle=w_handle)
+                #window['&Yes'].Click()
+        except Exception:
+            self.ShowError("Cannot select custom content list")
+
+    def OnOK(self, e):
+        try:
+            path = self.textPath.GetValue()
+
+            if not path:
+                self.ShowError('No path entered')
+                return
+
+            amd = string.rsplit(path, '|', 1)
+
+            if len(amd) < 2:
+                self.ShowError('Incorrect path format')
+                return
+
+            if '*' in amd[1]:
+                path = amd[0] + '|'
+
+            extensions = []
+            for item in self.CheckBoxes.itervalues():
+                if item.GetValue():
+                    extensions.append(item.GetLabel())
+
+            if not len(extensions):
+                self.ShowError('No extensions selected')
+                return
+
+            if not FTKImager.custom_content:
+                FTKImager.GetCustomContentSource()
+
+            # minimize imager, show a progress dialog and show imager after adding
+            FTKImager.imager.Minimize()
+            self.Gdial = wx.ProgressDialog('Adding extensions', 'Adding extensions',
+                                           maximum=100, parent=self, style=wx.PD_APP_MODAL | wx.PD_CAN_ABORT
+                                                                           | wx.PD_SMOOTH)
+            percentage = 1 / float(len(extensions)) * 100
+            count = percentage
+            for item in extensions:
+                FTKImager.AddExtension(path, item)
+                # Update() returns a tuple of bool (continue, skip)
+                if not self.Gdial.Update(count)[0]:
+                    break
+                count += percentage
+            self.Gdial.Update(100)
+            self.Gdial.Destroy()
+            FTKImager.ExtensionAddFinish()
+        except Exception, err:
+            print traceback.format_exc()
+            #or
+
+    def OnRemoveAll(self, e):
+        FTKImager.RemoveAll()
+
+    def OnCreateImage(self, e):
+        FTKImager.CreateImage()
+
+    def ShowNotification(self, message):
+        Xmessage = wx.MessageDialog(None, message, 'Event', wx.OK | wx.ICON_INFORMATION)
+        Xmessage.ShowModal()
+        pass
+
+    def ShowError(self, message):
+        error_message = wx.MessageDialog(None, message, 'Error',
+                                         wx.OK | wx.ICON_ERROR)
+        error_message.ShowModal()
+
+
+
+
+#----------------------------------------------------------------------
 class GaugeDialog(wx.Dialog):
     def __init__(self, *args, **kwargs):
         super(GaugeDialog, self).__init__(*args, **kwargs)
@@ -153,15 +319,13 @@ def MovePosition(pos, row=1, col=1):
     return pos
 
 
-########################################################################
+#----------------------------------------------------------------------
 class PageMain(wx.Panel):
-    FTKImager = None
-    # ----------------------------------------------------------------------
+
     def __init__(self, parent):
         """Constructor"""
         wx.Panel.__init__(self, parent)
-        self.InitFTKImager()
-        self.GetExtensions()
+
         self.InitUI()
 
     def InitUI(self):
@@ -249,7 +413,6 @@ class PageMain(wx.Panel):
         #set main sizer of the panel
         panel.SetSizerAndFit(bigVBox)
 
-
     def GetExtensions(self):
         with open('extensions.csv', 'rb') as extensionFile:
             extensionReader = csv.reader(extensionFile)
@@ -267,158 +430,7 @@ class PageMain(wx.Panel):
 
                 # exit()
 
-    def InitFTKImager(self):
-        filePath = self.ReadConfig()
-        self.FTKImager = FTKController()
-
-        if not admin.isUserAdmin():
-            self.ShowError("This program needs to be started as administrator")
-            # rc = admin.runAsAdmin(cmdLine=("C:\Program Files (x86)\AccessData\FTK Imager\FTK Imager.exe", ""))
-            admin.runAsAdmin()
-            exit(0)
-        else:
-            if self.FTKImager.CheckFTKImagerStarted():
-                return
-            else:
-                for i in range(0, 15):
-                    if self.FTKImager.StartProgramElavated(filePath):
-                        break
-                        time.sleep(0.5)
-
-        # is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
-        # if not is_admin:
-        # self.ShowError("Please start FTK Imager first or run this program as administrator")
-        # self.Close()
-
-
-    def ReadConfig(self, configFile='config.ini'):
-        FTK_IMAGER_PATH = False
-        try:
-            # read config.ini for path to FTK Imager
-            config = ConfigParser.ConfigParser(dict_type=MultiOrderedDict)
-            config.read(configFile)
-            path = config.get('DEFAULT', 'path')
-            for item in path:
-                if os.path.exists(item):
-                    FTK_IMAGER_PATH = item
-        except BaseException:
-            import sys
-
-            print "Unexpected error:", sys.exc_info()[0]
-            self.ShowError('Error reading file ' + configFile)
-            exit(0)
-        finally:
-            return FTK_IMAGER_PATH
-
-    def OnQuit(self, e):
-        # Show a dialog that ask user to confirm exit action, default to YES
-        dial = wx.MessageDialog(None, 'Do you want to close FTK Imager?', 'Question',
-                                wx.YES_NO | wx.YES_DEFAULT | wx.ICON_QUESTION)
-        if dial.ShowModal() == wx.ID_YES:
-            self.FTKImager.ExitFTK()
-        self.Close()
-        exit()
-
-    def OnClose(self, e):
-        self.Close()
-        exit()
-
-    def OnCheck(self, e):
-        # Get checkbox checked using GetEventObject()
-        ctrl = e.GetEventObject()
-        # Check for correct ID.
-        # If true: also set all other child checkboxes to corresponding value
-        for group, item in self.all_extensions.iteritems():
-            if ctrl.GetLabel() == group:
-                for k in item.iterkeys():
-                    self.CheckBoxes[k].SetValue(ctrl.GetValue())
-
-    def OnGetPath(self, e):
-        try:
-            if self.FTKImager.GetCustomContentSource(1):
-                itemCount = self.FTKImager.custom_content.ItemCount()
-
-            if not itemCount:
-                self.ShowError("Cannot select custom content list")
-                return
-            # Get path from the custom content first item
-            path = self.FTKImager.custom_content.GetItem(0)['text']
-            self.textPath.SetValue(path)
-            self.FTKImager.custom_content.Select(0)
-            if self.FTKImager.imager['&Remove'].IsEnabled():
-                self.FTKImager.imager['&Remove'].Click()
-                # w_handle = pywinauto.findwindows.find_windows(
-                # title=u'FTK Imager')[0]
-                #window = self.pwa_app.window_(handle=w_handle)
-                #window['&Yes'].Click()
-        except Exception:
-            self.ShowError("Cannot select custom content list")
-
-    def OnOK(self, e):
-        try:
-            path = self.textPath.GetValue()
-
-            if not path:
-                self.ShowError('No path entered')
-                return
-
-            amd = string.rsplit(path, '|', 1)
-
-            if len(amd) < 2:
-                self.ShowError('Incorrect path format')
-                return
-
-            if '*' in amd[1]:
-                path = amd[0] + '|'
-
-            extensions = []
-            for item in self.CheckBoxes.itervalues():
-                if item.GetValue():
-                    extensions.append(item.GetLabel())
-
-            if not len(extensions):
-                self.ShowError('No extensions selected')
-                return
-
-            if not self.FTKImager.custom_content:
-                self.FTKImager.GetCustomContentSource()
-
-            # minimize imager, show a progress dialog and show imager after adding
-            self.FTKImager.imager.Minimize()
-            self.Gdial = wx.ProgressDialog('Adding extensions', 'Adding extensions',
-                                           maximum=100, parent=self, style=wx.PD_APP_MODAL | wx.PD_CAN_ABORT
-                                                                           | wx.PD_SMOOTH)
-            percentage = 1 / float(len(extensions)) * 100
-            count = percentage
-            for item in extensions:
-                self.FTKImager.AddExtension(path, item)
-                # Update() returns a tuple of bool (continue, skip)
-                if not self.Gdial.Update(count)[0]:
-                    break
-                count += percentage
-            self.Gdial.Update(100)
-            self.Gdial.Destroy()
-            self.FTKImager.ExtensionAddFinish()
-        except Exception, err:
-            print traceback.format_exc()
-            #or
-    def OnRemoveAll(self, e):
-        self.FTKImager.RemoveAll()
-
-    def OnCreateImage(self, e):
-        self.FTKImager.CreateImage()
-
-    def ShowNotification(self, message):
-        Xmessage = wx.MessageDialog(None, message, 'Event', wx.OK | wx.ICON_INFORMATION)
-        Xmessage.ShowModal()
-        pass
-
-    def ShowError(self, message):
-        error_message = wx.MessageDialog(None, message, 'Error',
-                                         wx.OK | wx.ICON_ERROR)
-        error_message.ShowModal()
-
-
+#----------------------------------------------------------------------
 class MultiOrderedDict(OrderedDict):
     def __setitem__(self, key, value):
         if isinstance(value, list) and key in self:
@@ -427,11 +439,28 @@ class MultiOrderedDict(OrderedDict):
             super(OrderedDict, self).__setitem__(key, value)
 
 
-########################################################################
+#----------------------------------------------------------------------
+class LeftTree(wx.Panel):
+    """"""
+
+    def __init__(self, parent):
+        """Constructor"""
+        wx.Panel.__init__(self, parent=parent)
+        # New tree: no root, has + button, row hightlight
+        tree_ctrl = wx.TreeCtrl(self, -1, style=wx.TR_DEFAULT_STYLE | wx.TR_TWIST_BUTTONS | \
+                                                     wx.TR_FULL_ROW_HIGHLIGHT | \
+                                                     wx.TR_EDIT_LABELS | wx.TR_HIDE_ROOT)
+        self.tree = tree_ctrl
+
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(self.tree, 0, wx.EXPAND)
+        self.SetSizer(sizer)
+
+
+#----------------------------------------------------------------------
 class PageUSB(wx.Panel):
     """"""
 
-    # ----------------------------------------------------------------------
     def __init__(self, parent):
         """Constructor"""
         wx.Panel.__init__(self, parent)

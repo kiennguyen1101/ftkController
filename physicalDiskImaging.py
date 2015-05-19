@@ -1,18 +1,14 @@
-import wmi
-import traceback
-import time
-start_time = time.time()
+import subprocess
+import shlex
+def os_system_dd():
+   cmd = ['dd','if=\\\?\Device\Harddisk1\Partition0', 'of=C:\\temp\\tmp.img',
+                           'bs=512' ,'--size', '--progress']
+   # cmd = shlex.split('dd if=\\?\Device\Harddisk1\Partition0 of=C:\temp\tmp.img bs=1M conv=sync --size --progress')
+   a = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE) # notice stderr
+   print subprocess.list2cmdline(cmd)
+   stdout, stderr = a.communicate()
 
-c = wmi.WMI()
-sector_size = 512
-usb = ''
-for physical_disk in c.Win32_DiskDrive ():
-    if 'Removable' in physical_disk.MediaType:
-        usb = physical_disk
+   print stdout, stderr
 
-# with open(usb.DeviceID,'rb') as f:
-#     with open("C:/test/test.dd", "wb") as i:
-#         while True:
-#             if i.write(f.read(512)) == 0:
-#                 break
-# print("--- %s seconds ---" % (time.time() - start_time))
+if __name__ == '__main__':
+   os_system_dd()

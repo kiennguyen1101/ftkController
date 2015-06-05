@@ -13,7 +13,6 @@ class FTKController(object):
         """Constructor"""
         self.pwa_app = pywinauto.application.Application()
 
-    # ----------------------------------------------------------------------
     def CheckFTKImagerStarted(self):
         """"""
         # bind pywinauto to FTK Imager if it has already been started

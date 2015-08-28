@@ -55,7 +55,7 @@ class FTKControllerGUI(wx.Frame):
         self.SetSizer(sSizer)
         self.Layout()
         # register the self.onActivated function to be called on double click
-        # wx.EVT_TREE_ITEM_ACTIVATED(self.tree, self.tree.GetId(), self.onActivated)
+        wx.EVT_TREE_ITEM_ACTIVATED(leftP.tree, leftP.tree.GetId(), self.onActivated)
         wx.EVT_TREE_ITEM_RIGHT_CLICK(leftP.tree, leftP.tree.GetId(), self.onRightClick)
         # wx.EVT_TREE_KEY_DOWN(self.tree, self.tree.GetId(), self.onKeyDown)
 
@@ -74,13 +74,25 @@ class FTKControllerGUI(wx.Frame):
         wx.EVT_MENU(menu,Addpathid, lambda evt, temp=tree: self.MenuSelectionCb(evt, temp) )
         self.PopupMenu(menu, event.GetPoint())
         menu.Destroy()
-
+    
     def MenuSelectionCb(self, event, tree):
         node = tree.GetFocusedItem()
-        print tree.GetItemText(node)
-        print tree.GetItemText(tree.GetItemParent(node))
-        self.mainPage.textPath.SetValue(tree.GetItemText(node))
+        #print tree.GetItemText(node)
+        path = self.GetPathFromNode(node, tree)      
+        self.mainPage.textPath.SetValue(path)
+        
+    def GetPathFromNode(self, node, tree):
+        pieces = []
+        while tree.GetItemParent(node):
+            pieces.insert(0, tree.GetItemText(node))
+            node = tree.GetItemParent(node)
+        return ':'.join(pieces) + "|*"
 
+    def onActivated(self, event):       
+        path = self.GetPathFromNode(event.GetItem(), event.GetEventObject())        
+        self.mainPage.textPath.SetValue(path)
+        
+        
     def InitMenu(self):
         # Ccreate a menubar object.
         menubar = wx.MenuBar()

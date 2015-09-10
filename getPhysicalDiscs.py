@@ -30,10 +30,10 @@ for physical_disk in c.Win32_DiskDrive ():
     if 'Removable' in physical_disk.MediaType:
         print(physical_disk)
 
-for physical_disk in c.Win32_DiskDrive ():
-    for partition in physical_disk.associators ("Win32_DiskDriveToDiskPartition"):
-        print partition
-        for logical_disk in partition.associators ("Win32_LogicalDiskToPartition"):
-            # print logical_disk
-            if logical_disk.DriveType is 2:
-                print logical_disk.Caption
+#for physical_disk in c.Win32_DiskDrive ():
+    #for partition in physical_disk.associators ("Win32_DiskDriveToDiskPartition"):
+        #print partition
+        #for logical_disk in partition.associators ("Win32_LogicalDiskToPartition"):
+            ## print logical_disk
+            #if logical_disk.DriveType is 2:
+                #print logical_disk.Caption

@@ -7,4 +7,5 @@ title_u = u'FTK Controller'
 FTKController = ftk_controller_gui.FTKControllerGUI(None, title=title_u, size=(770, 450))
 FTKController.Centre()
 FTKController.Show()
+FTKController.SetFocus()
 app.MainLoop()

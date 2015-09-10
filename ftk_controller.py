@@ -2,7 +2,7 @@ import time
 import os
 import traceback
 import pywinauto
-
+import logging
 ########################################################################
 class FTKController(object):
     """"""
@@ -13,19 +13,18 @@ class FTKController(object):
         """Constructor"""
         self.pwa_app = pywinauto.application.Application()
 
-    def CheckFTKImagerStarted(self):
+    def HookFTKImager(self):
         """"""
         # bind pywinauto to FTK Imager if it has already been started
         #else try to start FTK Imager.
         w_handle = False
-        try:
-            w_handle = pywinauto.findwindows.find_window(
-                class_name='Afx:00400000:0')
-            if (w_handle):
-                self.imager = self.pwa_app.window_(handle=w_handle)
-                return True
-        except Exception:
-            return False
+       
+        w_handle = pywinauto.findwindows.find_window(
+            class_name='Afx:00400000:0')
+        if (w_handle):
+            self.imager = self.pwa_app.window_(handle=w_handle)
+            return True
+      
 
     def StartProgramElavated(self, path):
         # bind pywinauto to FTK Imager if it has already been started
@@ -37,7 +36,8 @@ class FTKController(object):
             w_handle = pywinauto.findwindows.find_window(
                 class_name='Afx:00400000:0')
         except Exception:
-            pass
+            logging.exception("Cannot start FTK Imager")
+            return False
         finally:
             if not w_handle:
                 return False
@@ -52,37 +52,33 @@ class FTKController(object):
         #if no attributes is stored.
         #TODO: Check custom content source from undock (seperate) windows
         try:
-            for item in self.imager.Children():
+            for item in self.imager.Children():               
                 if type(item) is pywinauto.controls.common_controls.ListViewWrapper:
                     # print item.ItemCount()
-                    # Check if the item's text list contains this string
-                    #print any("Include Subdirectories" in s for s in item.Texts())
-                    if any("Include Subdirectories" in s for s in item.Texts()):
-                        print "custom content found!"
-                        self.custom_content = item
+                    # Check if the item's text list contains this string                   
+                    if "Evidence:File System" in item.GetColumn(0)['text']:
+                        logging.info("Found custom content")
+                        self.custom_content = item                        
                         return True
-        except:
-            print traceback.format_exc()
+        except Exception, e:
+            logging.exception("Error getting custom content")
             return False
 
-    def AddExtension(self, path, extension):
-        try:
-            pos = self.custom_content.ItemCount()
-            ctrl = self.imager['&New']
-            ctrl.Click()
-            self.custom_content.Select(pos)
-            ctrl = self.imager['&Edit']
-            ctrl.Click()
-            w_handle = pywinauto.findwindows.find_window(
-                title=u'Wild Card Options')
-            editor = self.pwa_app.window_(handle=w_handle)
-            editor.Edit.Select()
-            source = '%s*.%s' % (path, extension)
-            editor.Edit.SetEditText(source)
-            editor['&OK'].Click()
-            self.custom_content.Deselect(pos)
-        except Exception:
-            print traceback.format_exc()
+    def AddExtension(self, path, extension):        
+        pos = self.custom_content.ItemCount()
+        ctrl = self.imager['&New']
+        ctrl.Click()
+        self.custom_content.Select(pos)
+        ctrl = self.imager['&Edit']
+        ctrl.Click()
+        w_handle = pywinauto.findwindows.find_window(
+            title=u'Wild Card Options')
+        editor = self.pwa_app.window_(handle=w_handle)
+        editor.Edit.Select()
+        source = '%s*.%s' % (path, extension)
+        editor.Edit.SetEditText(source)
+        editor['&OK'].Click()
+        self.custom_content.Deselect(pos)
 
     def ExtensionAddFinish(self):
         self.imager.Restore()
@@ -94,29 +90,29 @@ class FTKController(object):
     def CreateImage(self):
         if not self.FTKImager.imager['&Create Image'].IsEnabled():
             return
-        try:
-            self.FTKImager.imager['&Create Image'].Click()
-            w_handle = pywinauto.findwindows.find_windows(
-                title=u'Create Image', class_name='#32770')[0]
-            createWindow = self.pwa_app.window_(handle=w_handle)
-            createWindow['Checkbox1'].UnCheck()
-            createWindow['Checkbox2'].UnCheck()
-            createWindow['Checkbox3'].Check()
-            createWindow['&Add...'].Click()
-            w_handle = pywinauto.findwindows.find_windows(
-                title=u'Evidence Item Information', class_name='#32770')[0]
-            window = self.pwa_app.window_(handle=w_handle)        
-            window['&Next >'].Click() 
-            w_handle = pywinauto.findwindows.find_windows(
-                title=u'Select Image Destination', class_name='#32770')[0]
-            window = self.pwa_app.window_(handle=w_handle)
-        except:
-            pass
+        
+        self.FTKImager.imager['&Create Image'].Click()
+        w_handle = pywinauto.findwindows.find_windows(
+            title=u'Create Image', class_name='#32770')[0]
+        createWindow = self.pwa_app.window_(handle=w_handle)
+        createWindow['Checkbox1'].UnCheck()
+        createWindow['Checkbox2'].UnCheck()
+        createWindow['Checkbox3'].Check()
+        createWindow['&Add...'].Click()
+        w_handle = pywinauto.findwindows.find_windows(
+            title=u'Evidence Item Information', class_name='#32770')[0]
+        window = self.pwa_app.window_(handle=w_handle)        
+        window['&Next >'].Click() 
+        w_handle = pywinauto.findwindows.find_windows(
+            title=u'Select Image Destination', class_name='#32770')[0]
+        window = self.pwa_app.window_(handle=w_handle)
+        
         path = os.path.realpath('../../')
         dataPath = path + '\ImageData'
         try:
             os.stat(dataPath)
         except OSError, e:
+            logging.exception("Error creating ImageData directory")
             os.mkdir(dataPath)   
         window['Edit'].Select()
         window['Edit'].SetEditText(dataPath)
@@ -130,13 +126,11 @@ class FTKController(object):
         createWindow['&Start'].Click()
         self.ShowNotification('Image created: ' + dataPath + '\\' + fileName + '.ad1')
 
-    def RemoveAll(self):
-        try:
-            if self.imager['&Remove All'].IsEnabled():
-                self.imager['&Remove All'].Click()
-                w_handle = pywinauto.findwindows.find_windows(
-                    title=u'FTK Imager')[0]
-                window = self.pwa_app.window_(handle=w_handle)
-                window['&Yes'].Click()
-        except Exception:
-            pass
+    def RemoveAll(self):        
+        if self.imager['&Remove All'].IsEnabled():
+            self.imager['&Remove All'].Click()
+            w_handle = pywinauto.findwindows.find_windows(
+                title=u'FTK Imager')[0]
+            window = self.pwa_app.window_(handle=w_handle)
+            window['&Yes'].Click()
+       

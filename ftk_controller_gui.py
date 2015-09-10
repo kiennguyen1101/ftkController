@@ -11,13 +11,18 @@ from ftk_controller import FTKController
 from libs import admin
 import wx.grid
 import sys
-
+import logging
+import logging_config
 FTKImager= FTKController()
+logging_config.setup_logging()
+
+logger = logging.getLogger(__name__)
 
 # ----------------------------------------------------------------------
 class FTKControllerGUI(wx.Frame):
     APP_EXTENSION = 12
     APP_FTK_PATH = 13
+    
 
     def __init__(self, *args, **kwargs):
         super(FTKControllerGUI, self).__init__(*args, **kwargs)
@@ -58,10 +63,11 @@ class FTKControllerGUI(wx.Frame):
         wx.EVT_TREE_ITEM_ACTIVATED(leftP.tree, leftP.tree.GetId(), self.onActivated)
         wx.EVT_TREE_ITEM_RIGHT_CLICK(leftP.tree, leftP.tree.GetId(), self.onRightClick)
         # wx.EVT_TREE_KEY_DOWN(self.tree, self.tree.GetId(), self.onKeyDown)
+        logger.info("UI Initiated!")
 
     def onRightClick(self, event):
         tree = event.GetEventObject()
-        # print self.tree.GetItemText(event.GetItem())
+        logger.debug("Right click tree item: %s", self.tree.GetItemText(event.GetItem()))        
         # set the right click item as focused
         tree.SelectItem(event.GetItem())
         # create menu with 1 option
@@ -77,18 +83,20 @@ class FTKControllerGUI(wx.Frame):
     
     def MenuSelectionCb(self, event, tree):
         node = tree.GetFocusedItem()
-        #print tree.GetItemText(node)
+        logger.debug("Set path to: %s", tree.GetItemText(node))        
         path = self.GetPathFromNode(node, tree)      
         self.mainPage.textPath.SetValue(path)
         
     def GetPathFromNode(self, node, tree):
         pieces = []
+        #Traversal the tree from current node back to root
         while tree.GetItemParent(node):
             pieces.insert(0, tree.GetItemText(node))
             node = tree.GetItemParent(node)
         return ':'.join(pieces) + "|*"
 
-    def onActivated(self, event):       
+    def onActivated(self, event):
+        #set path from double click/enter
         path = self.GetPathFromNode(event.GetItem(), event.GetEventObject())        
         self.mainPage.textPath.SetValue(path)
         
@@ -133,25 +141,31 @@ class FTKControllerGUI(wx.Frame):
 
     def InitFTKImager(self):
         filePath = self.ReadConfig()
-
+        
         if not admin.isUserAdmin():
             self.ShowError("This program needs to be started as administrator")
+            exit()
             # rc = admin.runAsAdmin(cmdLine=("C:\Program Files (x86)\AccessData\FTK Imager\FTK Imager.exe", ""))
-            admin.runAsAdmin()
-            exit(0)
+            #admin.runAsAdmin()           
+            #exit(0)
         else:
-            if FTKImager.CheckFTKImagerStarted():
-                return
+            self.CheckFTKImagerStarted()
+            # is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
+            # if not is_admin:
+            # self.ShowError("Please start FTK Imager first or run this program as administrator")
+            # self.Close()
+                        
+    def CheckFTKImagerStarted(self): 
+        try:
+            if FTKImager.HookFTKImager():
+                return 
             else:
                 for i in range(0, 15):
-                    if FTKImager.StartProgramElavated(filePath):
-                        break
+                    if FTKImager.StartProgramElavated(filePath):                        
                         time.sleep(0.5)
-
-                        # is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
-                        # if not is_admin:
-                        # self.ShowError("Please start FTK Imager first or run this program as administrator")
-                        # self.Close()
+                        break 
+        except WindowNotFoundError, e:
+            pass             
 
     def ShowStatusText(self, text):
         rect = self.GetClientRect()
@@ -172,10 +186,8 @@ class FTKControllerGUI(wx.Frame):
                 if os.path.exists(item):
                     FTK_IMAGER_PATH = item
         except BaseException:
-            import sys
-
-            print "Unexpected error:", sys.exc_info()[0]
-            self.ShowError('Error reading file ' + configFile)
+            logger.error("Unexpected error reading config file %s", sys.exc_info()[0])         
+            self.ShowError('Error reading config file at ' + configFile)
             exit(0)
         finally:
             return FTK_IMAGER_PATH
@@ -188,7 +200,7 @@ class FTKControllerGUI(wx.Frame):
             if dial.ShowModal() == wx.ID_YES:
                 FTKImager.ExitFTK()
         except Exception:
-            print sys.exc_info()
+            logger.exception("Exception in OnQuit function")
         finally:
             self.Close()
             exit()
@@ -414,6 +426,7 @@ class PageMain(wx.Panel):
                 #window = self.pwa_app.window_(handle=w_handle)
                 #window['&Yes'].Click()
         except Exception:
+            logger.exception("Error getting path from FTK Imager")
             self.ShowError("Cannot select custom content list")
 
     def OnOK(self, e):
@@ -442,9 +455,11 @@ class PageMain(wx.Panel):
                 self.ShowError('No extensions selected')
                 return
 
-            if not FTKImager.custom_content:
+            if not hasattr(FTKImager, 'custom_content'):
                 FTKImager.GetCustomContentSource()
-
+                
+            #FTKImager.GetCustomContentSource()
+            
             # minimize imager, show a progress dialog and show imager after adding
             FTKImager.imager.Minimize()
             self.Gdial = wx.ProgressDialog('Adding extensions', 'Adding extensions',
@@ -462,14 +477,20 @@ class PageMain(wx.Panel):
             self.Gdial.Destroy()
             FTKImager.ExtensionAddFinish()
         except Exception, err:
-            print traceback.format_exc()
-            #or
+            logger.exception("Unknown error")
+            pass
+            
 
     def OnRemoveAll(self, e):
         FTKImager.RemoveAll()
 
     def OnCreateImage(self, e):
         FTKImager.CreateImage()
+        
+    def ShowError(self, message):
+        error_message = wx.MessageDialog(None, message, 'Error',
+                                         wx.OK | wx.ICON_ERROR)
+        error_message.ShowModal()       
 
 #----------------------------------------------------------------------
 class MultiOrderedDict(OrderedDict):
@@ -497,16 +518,17 @@ class LeftTree(wx.Panel):
 
         for item in FTKImager.imager.Children():
             if 'ControlBar' in item.FriendlyClassName() and any('Evidence' in s for s in item.Texts()):
-                # print(item.GetProperties())
+                logger.debug("Imager ControlBar class text: %s",item.GetProperties())                
                 evidenceTree = item.Children()[0]
         # Add the tree root
         self.root = self.tree.AddRoot('Evidences')
         # Add all evidences in FTK Imager
         if len(evidenceTree.Roots()) <= 0:
             FTKImager.imager.TypeKeys("%f l", 0.05)
-            busyDlg = wx.BusyInfo("Please wait")
+            busyDlg = wx.BusyInfo("Reading Evidences. Please wait...")
             time.sleep(1)
             busyDlg.Destroy()
+            FTKImager.imager.Minimize()            
 
         # From FTK Imager evidence tree add nodes to our tree
         for child in evidenceTree.Roots():
@@ -536,10 +558,21 @@ class LeftTree(wx.Panel):
             if root.Text() != 'internal_temp':
                 node = self.tree.AppendItem(parent, root.Text())
             return
+        
+
 
 #----------------------------------------------------------------------
 class PageUSB(wx.Panel):
     """"""
+    DRIVE_TYPES = {
+        0 : "Unknown",
+        1 : "No Root Directory",
+        2 : "Removable Disk",
+        3 : "Local Disk",
+        4 : "Network Drive",
+        5 : "Compact Disc",
+        6 : "RAM Disk"
+    }    
 
     def __init__(self, parent):
         """Constructor"""
@@ -547,14 +580,25 @@ class PageUSB(wx.Panel):
         panel = wx.Panel(self, -1)
         label1 = wx.StaticText(panel, -1, "Size:")
         label2 = wx.StaticText(panel, -1, "Pos:")
-        self.sizeCtrl = wx.TextCtrl(panel, -1, "", style=wx.TE_READONLY)
+        import wmi
+        c = wmi.WMI ()
+        usb_list = []
+        for physical_disk in c.Win32_DiskDrive ():
+            if 'Removable' in physical_disk.MediaType:
+                usb_list.append(physical_disk.DeviceID)   
+        if len(usb_list) < 1:
+            usb_list.append("No USB detected yet")
+        self.cb = wx.ComboBox(panel, -1, "", choices=usb_list, 
+                             style=wx.CB_READONLY)   
+        self.cb.SetValue(usb_list[0])
+        #self.sizeCtrl = wx.TextCtrl(panel, -1, "", style=wx.TE_READONLY)
         self.posCtrl = wx.TextCtrl(panel, -1, "", style=wx.TE_READONLY)
         self.panel = panel
 
         # Use some sizers for layout of the widgets
         sizer = wx.FlexGridSizer(2, 2, 5, 5)
         sizer.Add(label1)
-        sizer.Add(self.sizeCtrl)
+        sizer.Add(self.cb)
         sizer.Add(label2)
         sizer.Add(self.posCtrl)
 

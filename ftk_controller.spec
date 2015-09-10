@@ -18,7 +18,9 @@ coll = COLLECT(exe,
                a.zipfiles,
                a.datas +  [('config.ini', 'config.ini', 'DATA'),
 						   ('exit.png', 'exit.png', 'DATA'),
-						   ('extensions.csv', 'extensions.csv', 'DATA')],
+						   ('extensions.csv', 'extensions.csv', 'DATA'),
+						   ('logging.json', 'logging.json', 'DATA')
+						   ],
 						 
                strip=None,
                upx=True,

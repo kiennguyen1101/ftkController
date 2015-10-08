@@ -111,7 +111,7 @@ class FTKControllerGUI(wx.Frame):
         fileMenu = wx.Menu()
         optionMenu = wx.Menu()
         # Create a menu item with shortkey ctrl+Q
-        qmi = wx.MenuItem(fileMenu, wx.ID_EXIT, '&Quit\tCtrl+q')
+        qmi = wx.MenuItem(fileMenu, wx.ID_EXIT, '&Kill FTK and quit')
 
         # Set custom icon for the menu item
         try:
@@ -137,9 +137,10 @@ class FTKControllerGUI(wx.Frame):
         self.Bind(wx.EVT_MENU, self.OnOptionPath, id=self.APP_FTK_PATH)
 
         #Append a menu into the menubar and finalize settings
-        menubar.Append(fileMenu, '&File')
+        menubar.Append(fileMenu, '&Programs')
         menubar.Append(optionMenu, '&Options')
         self.SetMenuBar(menubar)
+        self.Bind(wx.EVT_CLOSE, self.OnClose)
 
 
     def InitFTKImager(self):              
@@ -197,22 +198,32 @@ class FTKControllerGUI(wx.Frame):
         finally:
             return FTK_IMAGER_PATH
 
-    def OnQuit(self, e):
-        # Show a dialog that ask user to confirm exit action, default to YES
+    def OnQuit(self, e):       
+        try:
+            dial = wx.MessageDialog(None, u'Do you want to close FTK Imager and all running instances?', 'Question',
+                                    wx.YES_NO | wx.YES_DEFAULT | wx.ICON_QUESTION)
+            if dial.ShowModal() == wx.ID_YES:
+                #FTKImager.ExitFTK()
+                FTKImager.pwa_app.Kill_()
+        except Exception:
+            logger.exception("Exception in closing FTK Imager")
+        finally:
+            self.Destroy()
+            exit()
+       
+
+    def OnClose(self, e):
         try:
             dial = wx.MessageDialog(None, u'Do you want to close FTK Imager?', 'Question',
                                     wx.YES_NO | wx.YES_DEFAULT | wx.ICON_QUESTION)
             if dial.ShowModal() == wx.ID_YES:
                 FTKImager.ExitFTK()
+                #FTKImager.pwa_app.Kill_()
         except Exception:
-            logger.exception("Exception in OnQuit function")
+            logger.exception("Exception in closing FTK Imager")
         finally:
-            self.Close()
+            self.Destroy()
             exit()
-
-    def OnClose(self, e):
-        self.Close()
-        exit()
 
     def OnOptionExtension(self, e):
         """"""
@@ -503,7 +514,7 @@ class LeftTree(wx.Panel):
         self.root = self.tree.AddRoot('Evidences')
 
         while 1:        
-            time.sleep(.3)
+            time.sleep(.4)
             if items == len(evidenceTree.Texts()):
                 break
             else:
@@ -535,6 +546,7 @@ class LeftTree(wx.Panel):
         if len(children) > 0:
             if root.Text() != 'internal_temp':
                 node = self.tree.AppendItem(parent, root.Text())
+                #fake icon showing the item has children, but no clickable
                 if len(root.SubElements()) > 0:
                     self.tree.SetItemHasChildren(node, True)
             for child in children:
@@ -563,56 +575,64 @@ class PageUSB(wx.Panel):
 
     def __init__(self, parent):
         """Constructor"""
-        wx.Panel.__init__(self, parent)        
-        #large box which contains all others
-        border = wx.BoxSizer(wx.HORIZONTAL)          
+        wx.Panel.__init__(self, parent)    
+
+        hbox = wx.BoxSizer(wx.HORIZONTAL)
         
-        #contain the combobox
-        firstsizer = wx.BoxSizer(wx.HORIZONTAL)
+        #3 rows, 4 columns, 9 vgap, 15 hgap
+        fgs = wx.FlexGridSizer(3, 4, 9, 15)
         
-        #combo box list usb
-        usb_list = []
-        if len(usb_list) < 1:
-            usb_list.append("No USB detected yet")        
-        cb = wx.ComboBox(self, -1, "", choices=usb_list, style=wx.CB_READONLY, size=(300,150))
-        cb.SetValue(usb_list[0])        
+        tc_usb = wx.StaticText(self, label="USB Devices")
+     
         
-        firstsizer.Add(cb, 1, flag= wx.EXPAND | wx.ALIGN_CENTER | wx.TOP | wx.LEFT, border = 7)
+        usb_list = self.CheckUSBDevices()        
+        self.cb_usb = wx.ComboBox(self, -1, "", choices=usb_list, style=wx.CB_READONLY)
+        self.cb_usb.SetValue(usb_list[0])  
+        bt_refresh = wx.Button(self, label="Refresh")    
         
-        secondsizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.Bind(wx.EVT_BUTTON, self.OnRefresh, id=bt_refresh.Id)
+             
+        fgs.AddMany([(tc_usb), (self.cb_usb, 0, wx.EXPAND), bt_refresh])
         
-        lbl_device = wx.StaticText(self, label="Device:")
+        #Make columns 1 full size of panel
+        fgs.AddGrowableCol(1, 1)
         
-        secondsizer.Add(lbl_device, 1, wx.EXPAND)
-        
-        border.Add(firstsizer)
-        border.Add(secondsizer, 1 , wx.EXPAND)
-        self.SetSizer(border)
-        self.Fit()           
+        hbox.Add(fgs, proportion=1, flag=wx.ALL|wx.EXPAND, border=15)
+        self.SetSizerAndFit(hbox)   
             
-        #try:
-            #import wmi
-            #c = wmi.WMI ()
-            #usb_list = []
-            #for physical_disk in c.Win32_DiskDrive ():
-                #if 'Removable' in physical_disk.MediaType:
-                    #logger.debug("USB: %s", physical_disk)
-                    #usb_list.append(physical_disk.DeviceID)   
-            #if len(usb_list) < 1:
-                #usb_list.append("No USB detected yet")
-            #self.cb = wx.ComboBox(panel, -1, "", choices=usb_list, 
-                                 #style=wx.CB_READONLY)   
-            #self.cb.SetValue(usb_list[0])
-            #sizer.Add(self.cb)
-            ##self.sizeCtrl = wx.TextCtrl(panel, -1, "", style=wx.TE_READONLY)
-            ##EVT_RESULT(self,self.OnResult)
-            ##self.status.SetLabel('Starting computation')
-            ##logger.debug("Starting Thread")
-            ##self.worker = WorkerThread(self)            
-            ##self.TestDeviceNotifications()
+        #sizer.Add(self.cb)
+        #self.sizeCtrl = wx.TextCtrl(panel, -1, "", style=wx.TE_READONLY)
+        #EVT_RESULT(self,self.OnResult)
+        #self.status.SetLabel('Starting computation')
+        #logger.debug("Starting Thread")
+        #self.worker = WorkerThread(self)            
+        #self.TestDeviceNotifications()
             
         #except Exception, ex:
             #logger.exception("Error in detecting USB device.")   
+            
+    def OnRefresh(self, event):
+        usb_list = self.CheckUSBDevices()       
+        self.cb_usb.Clear()
+        self.cb_usb.AppendItems(usb_list)
+        self.cb_usb.SetValue(usb_list[0])
+            
+    def CheckUSBDevices(self):
+        usb_list = []
+        try:
+            import wmi
+            c = wmi.WMI ()
+            usb_list = []
+            for physical_disk in c.Win32_DiskDrive ():
+                if 'Removable' in physical_disk.MediaType:
+                    logger.debug("USB: %s", physical_disk)
+                    usb_list.append("{0}: {1}".format(physical_disk.DeviceID, physical_disk.Caption))  
+        except Exception,e:
+            logger.exception("Cannot detect USB devices")
+        finally:
+            if not len(usb_list):
+                usb_list.append("No USB detected yet")            
+            return usb_list
             
     def OnResult(self, event):
         """Show Result status."""

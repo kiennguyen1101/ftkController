@@ -4,7 +4,7 @@ import ftk_controller_gui
 
 app = wx.App()
 title_u = u'FTK Controller'
-FTKController = ftk_controller_gui.FTKControllerGUI(None, title=title_u, size=(770, 450))
+FTKController = ftk_controller_gui.FTKControllerGUI(None, title=title_u, size=(850, 475))
 FTKController.Centre()
 FTKController.Show()
 FTKController.SetFocus()

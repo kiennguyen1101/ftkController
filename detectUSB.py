@@ -1,110 +1,74 @@
-import win32api, win32con, win32gui
-from ctypes import *
+#-*- coding: utf-8 -*-
 
-#
-# Device change events (WM_DEVICECHANGE wParam)
-#
-DBT_DEVICEARRIVAL = 0x8000
-DBT_DEVICEQUERYREMOVE = 0x8001
-DBT_DEVICEQUERYREMOVEFAILED = 0x8002
-DBT_DEVICEMOVEPENDING = 0x8003
-DBT_DEVICEREMOVECOMPLETE = 0x8004
-DBT_DEVICETYPESSPECIFIC = 0x8005
-DBT_CONFIGCHANGED = 0x0018
+import sys, time
+import win32gui, win32con
+import win32gui_struct
+from PySide.QtGui import QWidget, QApplication
+from PySide.QtCore import QThread, Signal, QObject
 
-#
-# type of device in DEV_BROADCAST_HDR
-#
-DBT_DEVTYP_OEM = 0x00000000
-DBT_DEVTYP_DEVNODE = 0x00000001
-DBT_DEVTYP_VOLUME = 0x00000002
-DBT_DEVTYPE_PORT = 0x00000003
-DBT_DEVTYPE_NET = 0x00000004
+class MySignal(QObject):
+    msg = Signal(object)
 
-#
-# media types in DBT_DEVTYP_VOLUME
-#
-DBTF_MEDIA = 0x0001
-DBTF_NET = 0x0002
-
-WORD = c_ushort
-DWORD = c_ulong
-
-class DEV_BROADCAST_HDR (Structure):
-    _fields_ = [
-        ("dbch_size", DWORD),
-        ("dbch_devicetype", DWORD),
-        ("dbch_reserved", DWORD)
-    ]
-
-class DEV_BROADCAST_VOLUME (Structure):
-    _fields_ = [
-        ("dbcv_size", DWORD),
-        ("dbcv_devicetype", DWORD),
-        ("dbcv_reserved", DWORD),
-        ("dbcv_unitmask", DWORD),
-        ("dbcv_flags", WORD)
-    ]
-
-def drive_from_mask (mask):
-    n_drive = 0
-    while 1:
-        if (mask & (2 ** n_drive)): return n_drive
-        else: n_drive += 1
-
-class Notification:
-
+class MyThread(QThread):
     def __init__(self):
-        message_map = {
-            win32con.WM_DEVICECHANGE : self.onDeviceChange
-        }
+        QThread.__init__(self)
+        self.signal = MySignal()
+        self.GUID_DEVINTERFACE_USB_DEVICE = "{A5DCBF10-6530-11D2-901F-00C04FB951ED}"
 
-        wc = win32gui.WNDCLASS ()
-        hinst = wc.hInstance = win32api.GetModuleHandle (None)
-        wc.lpszClassName = "DeviceChangeDemo"
-        wc.style = win32con.CS_VREDRAW | win32con.CS_HREDRAW;
-        wc.hCursor = win32gui.LoadCursor (0, win32con.IDC_ARROW)
-        wc.hbrBackground = win32con.COLOR_WINDOW
-        wc.lpfnWndProc = message_map
-        classAtom = win32gui.RegisterClass (wc)
-        style = win32con.WS_OVERLAPPED | win32con.WS_SYSMENU
-        self.hwnd = win32gui.CreateWindow (
-            classAtom,
-            "Device Change Demo",
-            style,
-            0, 0,
-            win32con.CW_USEDEFAULT, win32con.CW_USEDEFAULT,
-            0, 0,
-            hinst, None
-        )
+    def run(self):
+        self.TestDeviceNotifications()
 
-    def onDeviceChange (self, hwnd, msg, wparam, lparam):
-        #
-        # WM_DEVICECHANGE:
-        #  wParam - type of change: arrival, removal etc.
-        #  lParam - what's changed?
-        #    if it's a volume then...
-        #  lParam - what's changed more exactly
-        #
-        dev_broadcast_hdr = DEV_BROADCAST_HDR.from_address (lparam)
+    def OnDeviceChange(self, hwnd, msg, wp, lp):
+        # 將 lp 拆成適當的  DEV_BROADCAST_* 格式，使用 DEV_BROADCAST_HDR 中的自我識別資料
+        info = win32gui_struct.UnpackDEV_BROADCAST(lp)
 
-        if wparam == DBT_DEVICEARRIVAL:
-            print "Something's arrived"
+        if wp == win32con.DBT_DEVICEARRIVAL and info.devicetype == win32con.DBT_DEVTYP_VOLUME:
+            self.signal.msg.emit(u'Means Added')
+        elif wp == win32con.DBT_DEVICEREMOVECOMPLETE and info.devicetype == win32con.DBT_DEVTYP_VOLUME:
+            self.signal.msg.emit(u'Device has been removed')
 
-            if dev_broadcast_hdr.dbch_devicetype == DBT_DEVTYP_VOLUME:
-                print "It's a volume!"
+        return True
 
-                dev_broadcast_volume = DEV_BROADCAST_VOLUME.from_address (lparam)
-                print dev_broadcast_hdr
-                print dev_broadcast_volume
-                
-                if dev_broadcast_volume.dbcv_flags & DBTF_MEDIA:
-                    print "with some media"
-                    drive_letter = drive_from_mask (dev_broadcast_volume.dbcv_unitmask)
-                    print "in drive", chr (ord ("A") + drive_letter)
+    def TestDeviceNotifications(self):
+        wc = win32gui.WNDCLASS()
+        wc.lpszClassName = 'test_devicenotify'
+        wc.style =  win32con.CS_GLOBALCLASS|win32con.CS_VREDRAW | win32con.CS_HREDRAW
+        wc.hbrBackground = win32con.COLOR_WINDOW+1
+        wc.lpfnWndProc={win32con.WM_DEVICECHANGE:self.OnDeviceChange}
+        class_atom=win32gui.RegisterClass(wc)
+        # 產生一個不可見的視窗
+        hwnd = win32gui.CreateWindow(wc.lpszClassName,
+                                     'Testing some devices',
+                                     win32con.WS_CAPTION,
+                                     100,100,900,900, 0, 0, 0, None)
 
-        return 1
+        hdevs = []
+        # 監看所有的USB裝置通知
+        filter = win32gui_struct.PackDEV_BROADCAST_DEVICEINTERFACE(self.GUID_DEVINTERFACE_USB_DEVICE)
+        hdev = win32gui.RegisterDeviceNotification(hwnd, filter, win32con.DEVICE_NOTIFY_WINDOW_HANDLE)
+        hdevs.append(hdev)
+
+        # 開始 message pump，等待通知被傳遞
+        while 1:
+            win32gui.PumpWaitingMessages()
+            time.sleep(1)
+        win32gui.DestroyWindow(hwnd)
+        win32gui.UnregisterClass(wc.lpszClassName, None)
+
+class MyWidget(QWidget):
+    def __init__(self):
+        QWidget.__init__(self)
+
+        self.thread = MyThread()
+        self.thread.signal.msg.connect(self.device_changed)
+        self.thread.start()
+
+    def device_changed(self, msg):
+        print 'got: '+msg
+
 
 if __name__=='__main__':
-    w = Notification ()
-    win32gui.PumpMessages ()
+    app = QApplication(sys.argv)
+    widget = MyWidget()
+    widget.show()
+    sys.exit(app.exec_())

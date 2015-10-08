@@ -18,12 +18,14 @@ class FTKController(object):
         # bind pywinauto to FTK Imager if it has already been started
         #else try to start FTK Imager.
         w_handle = False
-       
-        w_handle = pywinauto.findwindows.find_window(
-            class_name='Afx:00400000:0')
-        if (w_handle):
-            self.imager = self.pwa_app.window_(handle=w_handle)
-            return True
+        try:
+            w_handle = pywinauto.findwindows.find_window(
+                class_name='Afx:00400000:0')
+            if (w_handle):
+                self.imager = self.pwa_app.window_(handle=w_handle)
+                return True
+        except Exception, ex:
+            return False
       
 
     def StartProgramElavated(self, path):
@@ -88,16 +90,21 @@ class FTKController(object):
         window.SetFocus()
 
     def CreateImage(self):
-        if not self.FTKImager.imager['&Create Image'].IsEnabled():
+        if not self.imager['&Create Image'].IsEnabled():
             return
         
-        self.FTKImager.imager['&Create Image'].Click()
+        #TODO: Test creating multiple images simultaneously
+        self.imager['&Create Image'].Click()
         w_handle = pywinauto.findwindows.find_windows(
             title=u'Create Image', class_name='#32770')[0]
         createWindow = self.pwa_app.window_(handle=w_handle)
+        #TODO: options for these checkboxes
+        #Checkbox1 = Verify images after created
+        #Checkbox2 = Precalculate Progress Statistics
+        #Checkbox3 = Create directory listings of all files in the image after they are created
         createWindow['Checkbox1'].UnCheck()
-        createWindow['Checkbox2'].UnCheck()
-        createWindow['Checkbox3'].Check()
+        createWindow['Checkbox2'].Check()
+        createWindow['Checkbox3'].UnCheck()
         createWindow['&Add...'].Click()
         w_handle = pywinauto.findwindows.find_windows(
             title=u'Evidence Item Information', class_name='#32770')[0]
@@ -107,12 +114,19 @@ class FTKController(object):
             title=u'Select Image Destination', class_name='#32770')[0]
         window = self.pwa_app.window_(handle=w_handle)
         
+        #TODO: We need options for these as well
+        #Edit = Image Destination Folder
+        #Edit2 = Image File name (Exclude extension)
+        #Edit3 = Image Fragment Size (MB)
+        #Edit4 = Compression
+        #Checkbox = Use AD Encryption
+        #Checkbox2 = Filter by File Owner
         path = os.path.realpath('../../')
         dataPath = path + '\ImageData'
         try:
             os.stat(dataPath)
         except OSError, e:
-            logging.exception("Error creating ImageData directory")
+            logging.exception("Cannot find ImageData directory.")
             os.mkdir(dataPath)   
         window['Edit'].Select()
         window['Edit'].SetEditText(dataPath)
@@ -134,3 +148,14 @@ class FTKController(object):
             window = self.pwa_app.window_(handle=w_handle)
             window['&Yes'].Click()
        
+    def AddEvidences(self):
+        for item in self.imager.Children():
+            if 'ControlBar' in item.FriendlyClassName() and any('Evidence' in s for s in item.Texts()):
+                logging.debug("Found evidence tree")                
+                evidenceTree = item.Children()[0]        
+                
+        # Add all evidences in FTK Imager
+        if len(evidenceTree.Roots()) <= 0:
+            self.imager.TypeKeys("%f l", 0.05)
+            
+        return evidenceTree

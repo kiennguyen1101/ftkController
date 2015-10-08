@@ -5,7 +5,6 @@ import ConfigParser
 import time
 from collections import OrderedDict
 import csv
-import traceback
 import wx
 from ftk_controller import FTKController
 from libs import admin
@@ -13,10 +12,14 @@ import wx.grid
 import sys
 import logging
 import logging_config
+import win32gui, win32con
+import win32gui_struct         
+from threading import *
 FTKImager= FTKController()
 logging_config.setup_logging()
 
 logger = logging.getLogger(__name__)
+EVT_RESULT_ID = wx.NewId()
 
 # ----------------------------------------------------------------------
 class FTKControllerGUI(wx.Frame):
@@ -63,11 +66,11 @@ class FTKControllerGUI(wx.Frame):
         wx.EVT_TREE_ITEM_ACTIVATED(leftP.tree, leftP.tree.GetId(), self.onActivated)
         wx.EVT_TREE_ITEM_RIGHT_CLICK(leftP.tree, leftP.tree.GetId(), self.onRightClick)
         # wx.EVT_TREE_KEY_DOWN(self.tree, self.tree.GetId(), self.onKeyDown)
-        logger.info("UI Initiated!")
+        logger.info("UI Initiated successfully!")
 
     def onRightClick(self, event):
         tree = event.GetEventObject()
-        logger.debug("Right click tree item: %s", self.tree.GetItemText(event.GetItem()))        
+        logger.debug("Right click tree item: %s", tree.GetItemText(event.GetItem()))        
         # set the right click item as focused
         tree.SelectItem(event.GetItem())
         # create menu with 1 option
@@ -139,10 +142,8 @@ class FTKControllerGUI(wx.Frame):
         self.SetMenuBar(menubar)
 
 
-    def InitFTKImager(self):
-        filePath = self.ReadConfig()
-        
-        if not admin.isUserAdmin():
+    def InitFTKImager(self):              
+        if not admin.isUserAdmin():            
             self.ShowError("This program needs to be started as administrator")
             exit()
             # rc = admin.runAsAdmin(cmdLine=("C:\Program Files (x86)\AccessData\FTK Imager\FTK Imager.exe", ""))
@@ -156,16 +157,20 @@ class FTKControllerGUI(wx.Frame):
             # self.Close()
                         
     def CheckFTKImagerStarted(self): 
+        filePath = self.ReadConfig()
         try:
             if FTKImager.HookFTKImager():
                 return 
             else:
                 for i in range(0, 15):
-                    if FTKImager.StartProgramElavated(filePath):                        
+                    if FTKImager.StartProgramElavated(filePath):                
+                        logger.debug("FTK Imager custom content found")
                         time.sleep(0.5)
                         break 
-        except WindowNotFoundError, e:
-            pass             
+           
+        except Exception, e:
+            logger.exception("Error starting FTK Imager")
+            pass
 
     def ShowStatusText(self, text):
         rect = self.GetClientRect()
@@ -257,35 +262,6 @@ class GaugeDialog(wx.Dialog):
         bigVBox.Add(hbox3, proportion=1, flag=wx.ALIGN_CENTRE)
 
         pnl.SetSizer(bigVBox)
-
-
-def AddRow(pos, rownum=1):
-    if not pos:
-        return False
-    if len(pos) != 2:
-        return False
-    pos[0] = pos[0] + rownum
-    return pos
-
-
-def AddColumn(pos, colnum=1):
-    if not pos:
-        return False
-    if len(pos) != 2:
-        return False
-    pos[1] = pos[1] + colnum
-    return pos
-
-
-def MovePosition(pos, row=1, col=1):
-    if not pos:
-        return False
-    if len(pos) != 2:
-        return False
-    pos[0] = pos[0] + row
-    pos[1] = pos[1] + col
-    return pos
-
 
 #----------------------------------------------------------------------
 class PageMain(wx.Panel):
@@ -475,7 +451,7 @@ class PageMain(wx.Panel):
                 count += percentage
             self.Gdial.Update(100)
             self.Gdial.Destroy()
-            FTKImager.ExtensionAddFinish()
+            #FTKImager.ExtensionAddFinish()
         except Exception, err:
             logger.exception("Unknown error")
             pass
@@ -485,7 +461,11 @@ class PageMain(wx.Panel):
         FTKImager.RemoveAll()
 
     def OnCreateImage(self, e):
-        FTKImager.CreateImage()
+        try:
+            FTKImager.CreateImage()
+        
+        except Exception, e:
+            logger.critical("Cannot create image", exc_info=1)
         
     def ShowError(self, message):
         error_message = wx.MessageDialog(None, message, 'Error',
@@ -515,20 +495,23 @@ class LeftTree(wx.Panel):
                                                      wx.TR_FULL_ROW_HIGHLIGHT | \
                                                      wx.TR_EDIT_LABELS | wx.TR_HIDE_ROOT)
         self.tree = tree_ctrl
-
-        for item in FTKImager.imager.Children():
-            if 'ControlBar' in item.FriendlyClassName() and any('Evidence' in s for s in item.Texts()):
-                logger.debug("Imager ControlBar class text: %s",item.GetProperties())                
-                evidenceTree = item.Children()[0]
+       
         # Add the tree root
+        busyDlg = wx.BusyInfo("Reading Evidences. Please wait...")
+        evidenceTree = self.evidenceTree = FTKImager.AddEvidences()
+        items = len(evidenceTree.Texts())
         self.root = self.tree.AddRoot('Evidences')
-        # Add all evidences in FTK Imager
-        if len(evidenceTree.Roots()) <= 0:
-            FTKImager.imager.TypeKeys("%f l", 0.05)
-            busyDlg = wx.BusyInfo("Reading Evidences. Please wait...")
-            time.sleep(1)
-            busyDlg.Destroy()
-            FTKImager.imager.Minimize()            
+
+        while 1:        
+            time.sleep(.3)
+            if items == len(evidenceTree.Texts()):
+                break
+            else:
+                items = len(evidenceTree.Texts())   
+                
+       
+        busyDlg.Destroy()
+        FTKImager.imager.Minimize()
 
         # From FTK Imager evidence tree add nodes to our tree
         for child in evidenceTree.Roots():
@@ -552,6 +535,8 @@ class LeftTree(wx.Panel):
         if len(children) > 0:
             if root.Text() != 'internal_temp':
                 node = self.tree.AppendItem(parent, root.Text())
+                if len(root.SubElements()) > 0:
+                    self.tree.SetItemHasChildren(node, True)
             for child in children:
                 self.recursiveAdd(root=child, parent=node)
         else:
@@ -573,36 +558,184 @@ class PageUSB(wx.Panel):
         5 : "Compact Disc",
         6 : "RAM Disk"
     }    
+    
+    GUID_DEVINTERFACE_USB_DEVICE = "{A5DCBF10-6530-11D2-901F-00C04FB951ED}"
 
     def __init__(self, parent):
         """Constructor"""
-        wx.Panel.__init__(self, parent)
-        panel = wx.Panel(self, -1)
-        label1 = wx.StaticText(panel, -1, "Size:")
-        label2 = wx.StaticText(panel, -1, "Pos:")
-        import wmi
-        c = wmi.WMI ()
+        wx.Panel.__init__(self, parent)        
+        #large box which contains all others
+        border = wx.BoxSizer(wx.HORIZONTAL)          
+        
+        #contain the combobox
+        firstsizer = wx.BoxSizer(wx.HORIZONTAL)
+        
+        #combo box list usb
         usb_list = []
-        for physical_disk in c.Win32_DiskDrive ():
-            if 'Removable' in physical_disk.MediaType:
-                usb_list.append(physical_disk.DeviceID)   
         if len(usb_list) < 1:
-            usb_list.append("No USB detected yet")
-        self.cb = wx.ComboBox(panel, -1, "", choices=usb_list, 
-                             style=wx.CB_READONLY)   
-        self.cb.SetValue(usb_list[0])
-        #self.sizeCtrl = wx.TextCtrl(panel, -1, "", style=wx.TE_READONLY)
-        self.posCtrl = wx.TextCtrl(panel, -1, "", style=wx.TE_READONLY)
-        self.panel = panel
+            usb_list.append("No USB detected yet")        
+        cb = wx.ComboBox(self, -1, "", choices=usb_list, style=wx.CB_READONLY, size=(300,150))
+        cb.SetValue(usb_list[0])        
+        
+        firstsizer.Add(cb, 1, flag= wx.EXPAND | wx.ALIGN_CENTER | wx.TOP | wx.LEFT, border = 7)
+        
+        secondsizer = wx.BoxSizer(wx.HORIZONTAL)
+        
+        lbl_device = wx.StaticText(self, label="Device:")
+        
+        secondsizer.Add(lbl_device, 1, wx.EXPAND)
+        
+        border.Add(firstsizer)
+        border.Add(secondsizer, 1 , wx.EXPAND)
+        self.SetSizer(border)
+        self.Fit()           
+            
+        #try:
+            #import wmi
+            #c = wmi.WMI ()
+            #usb_list = []
+            #for physical_disk in c.Win32_DiskDrive ():
+                #if 'Removable' in physical_disk.MediaType:
+                    #logger.debug("USB: %s", physical_disk)
+                    #usb_list.append(physical_disk.DeviceID)   
+            #if len(usb_list) < 1:
+                #usb_list.append("No USB detected yet")
+            #self.cb = wx.ComboBox(panel, -1, "", choices=usb_list, 
+                                 #style=wx.CB_READONLY)   
+            #self.cb.SetValue(usb_list[0])
+            #sizer.Add(self.cb)
+            ##self.sizeCtrl = wx.TextCtrl(panel, -1, "", style=wx.TE_READONLY)
+            ##EVT_RESULT(self,self.OnResult)
+            ##self.status.SetLabel('Starting computation')
+            ##logger.debug("Starting Thread")
+            ##self.worker = WorkerThread(self)            
+            ##self.TestDeviceNotifications()
+            
+        #except Exception, ex:
+            #logger.exception("Error in detecting USB device.")   
+            
+    def OnResult(self, event):
+        """Show Result status."""
+        if event.data is None:
+            # Thread aborted (using our convention of None return)
+            logger.debug("Thread aborted")
+        else:
+            # Process results here
+            #self.status.SetLabel('Computation Result: %s' % event.data)
+            logger.debug("New message: %s", event.data)
+        # In either event, the worker is done
+        self.worker = None    
+        
+    def OnDeviceChange(self, hwnd, msg, wp, lp):         
+        info = win32gui_struct.UnpackDEV_BROADCAST(lp)
+    
+        if wp == win32con.DBT_DEVICEARRIVAL and info.devicetype == win32con.DBT_DEVTYP_VOLUME:
+            logger.info("Device added")
+        elif wp == win32con.DBT_DEVICEREMOVECOMPLETE and info.devicetype == win32con.DBT_DEVTYP_VOLUME:
+            logger.info("Device removed")
+    
+        return True    
+    
+    def TestDeviceNotifications(self):          
+        wc = win32gui.WNDCLASS()
+        wc.lpszClassName = 'test_devicenotify'
+        wc.style =  win32con.CS_GLOBALCLASS|win32con.CS_VREDRAW | win32con.CS_HREDRAW
+        wc.hbrBackground = win32con.COLOR_WINDOW+1
+        wc.lpfnWndProc={win32con.WM_DEVICECHANGE:self.OnDeviceChange}
+        class_atom=win32gui.RegisterClass(wc)
+        # 產生一個不可見的視窗
+        hwnd = win32gui.CreateWindow(wc.lpszClassName,
+                                     'Testing some devices',
+                                     win32con.WS_CAPTION,
+                                     100,100,900,900, 0, 0, 0, None)
+    
+        hdevs = []
+        # 監看所有的USB裝置通知
+        filter = win32gui_struct.PackDEV_BROADCAST_DEVICEINTERFACE(self.GUID_DEVINTERFACE_USB_DEVICE)
+        hdev = win32gui.RegisterDeviceNotification(hwnd, filter, win32con.DEVICE_NOTIFY_WINDOW_HANDLE)
+        hdevs.append(hdev)
+    
+        # 開始 message pump，等待通知被傳遞
+        while 1:
+            win32gui.PumpWaitingMessages()
+            time.sleep(1)
+        win32gui.DestroyWindow(hwnd)
+        win32gui.UnregisterClass(wc.lpszClassName, None)    
 
-        # Use some sizers for layout of the widgets
-        sizer = wx.FlexGridSizer(2, 2, 5, 5)
-        sizer.Add(label1)
-        sizer.Add(self.cb)
-        sizer.Add(label2)
-        sizer.Add(self.posCtrl)
+        
+# Thread class that executes processing
+class WorkerThread(Thread):
+    """Worker Thread Class."""
+    def __init__(self, notify_window):
+        """Init Worker Thread Class."""
+        Thread.__init__(self)
+        self._notify_window = notify_window
+        self._want_abort = 0
+        # This starts the thread running on creation, but you could
+        # also make the GUI thread responsible for calling this
+        self.start()
 
-        border = wx.BoxSizer()
-        border.Add(sizer, 0, wx.ALL, 15)
-        panel.SetSizerAndFit(border)
-        self.Fit()
+    def run(self):
+        """Run Worker Thread."""
+        # This is the code executing in the new thread. Simulation of
+        # a long process (well, 10s here) as a simple loop - you will
+        # need to structure your processing so that you periodically
+        # peek at the abort variable
+        for i in range(10):
+            time.sleep(.1)
+            if self._want_abort:
+                # Use a result of None to acknowledge the abort (of
+                # course you can use whatever you'd like or even
+                # a separate event type)
+                wx.PostEvent(self._notify_window, ResultEvent(None))
+                return
+        # Here's where the result would be returned (this is an
+        # example fixed result of the number 10, but it could be
+        # any Python object)
+        wx.PostEvent(self._notify_window, ResultEvent(10))
+
+    def abort(self):
+        """abort worker thread."""
+        # Method for use by main thread to signal an abort
+        self._want_abort = 1
+        
+class ResultEvent(wx.PyEvent):
+    """Simple event to carry arbitrary result data."""
+    def __init__(self, data):
+        """Init Result Event."""
+        wx.PyEvent.__init__(self)
+        self.SetEventType(EVT_RESULT_ID)
+        self.data = data
+        
+        
+#-----Global functions---------
+def EVT_RESULT(win, func):
+    """Define Result Event."""
+    win.Connect(-1, -1, EVT_RESULT_ID, func)
+    
+def AddRow(pos, rownum=1):
+    if not pos:
+        return False
+    if len(pos) != 2:
+        return False
+    pos[0] = pos[0] + rownum
+    return pos
+
+
+def AddColumn(pos, colnum=1):
+    if not pos:
+        return False
+    if len(pos) != 2:
+        return False
+    pos[1] = pos[1] + colnum
+    return pos
+
+
+def MovePosition(pos, row=1, col=1):
+    if not pos:
+        return False
+    if len(pos) != 2:
+        return False
+    pos[0] = pos[0] + row
+    pos[1] = pos[1] + col
+    return pos

@@ -1,0 +1,123 @@
+Usage
+
+dd [bs=SIZE[SUFFIX]] [count=BLOCKS[SUFFIX]] if=FILE of=FILE [seek=BLOCKS[SUFFIX]] [skip=BLOCKS[SUFFIX]] [--size] [--list] [--progress]
+bs is the block size. The block size can be specified in bytes or with one of the following suffix
+
+Description	Suffix	Size
+Characters	c	1
+Words	w	2
+Double Words	d	4
+Quad Words	q	8
+Kilobytes	k	1,024
+Megabytes	M	1,048,576
+Gigabytes	G	1,073,741,824
+The default block size is 512 which will work for most files and devices but the copy will be a lot faster if you use a larger block size. For example a floppy disk read with bs=1k count=1440 takes almost twice as long than if you use bs=1440k count=1. Don't make the block size too large because windows will run out of memory. 1M is probably a good size and upper limit. Most CD/DVDs have a 2k sector size and probably will not work with a block size which is not a multiple of that.
+
+skip is the distance to skip over the input file before reading is commenced. It is in blocks so the distance will be skip * blocksize. You can also use a suffix here so skip=1k will skip 1024 blocks. You can remember that skip relates to the input file by thinking of a 'skipping rope'.
+
+seek is the distance to seek over in the output file before writing is commenced. It is also in blocks do the distance will be seek * blocksize. You can also use a suffix here so seek=1k will seek 1024 blocks. You just have to remember that if skip is for in then seek is for out.
+
+count is the number of blocks to copy. If it is not specified then the dd will continue until the end of the file/device is reached. On many usb devices this is not reliable so you should use --size to guess the size of the device, see below. You can also use a suffix here so count=1k will copy 1024 blocks.
+
+Using --size
+
+Traditionally when using dd, if you wanted to copy an entire device, you did not specify a block count and dd would read until it reached the end of the device. If you tried to read past the end of the device, the data up to the end of the device would be returned and if you kept reading you would get an error message. Windows however does not always do this so --size will tell dd to figure out the size of the device and make sure it does not read past that point. This is important for USB sticks which stop working if you read past the end of them. This is not on by default because getting the correct size of the device is not always possible. Some devices also keep returning bogus data past the end of the device without returning a suitable error code
+
+Using --list
+
+Windows provides a number of ways to name a device. The --list will output the preferred names. Under NT4, only the \\?\Device\Harddisk<n>\Partition<n> method is available. Partition0 is the entire disk. Under Windows XP, some partitions may not have a Volume device. In this case you can still use the Harddisk<n>\Partition<n> name.
+
+Windows 2000 and later have Volume devices which are unique GUIDs which identify a disk or partition (what MS call a Volume). These are listed along with any mount point that they may be mounted on. Most of the time this is a drive letter but it may be a path on another filesystem. If you want to read the underlying device, do not include the trailing \ character. If the volume is not mounted there is no easy way to identify it so be careful. Under XP SP2, many partitions can not be read directly, even if they are not in use. There is a work around which I call reading partitions via the back door.
+
+Sample output
+
+dd --list
+rawwrite dd for windows version 0.4beta1.
+Written by John Newbigin <jn@it.swin.edu.au>
+This program is covered by the GPL.  See copying.txt for details
+Win32 Available Volume Information
+\\.\Volume{5cd94d2c-3251-11d9-9444-806d6172696f}\
+  link to \\?\Device\HarddiskVolume1
+  fixed media
+  Mounted on \\.\c:
+
+\\.\Volume{129b1243-3252-11d9-b167-806d6172696f}\
+  link to \\?\Device\CdRom0
+  CD-ROM
+  Mounted on \\.\r:
+
+\\.\Volume{129b1242-3252-11d9-b167-806d6172696f}\
+  link to \\?\Device\Floppy0
+  removable media
+  Mounted on \\.\a:
+
+\\.\Volume{e3429891-0eb9-11da-b18f-000d60dc98cd}\
+  link to \\?\Device\Harddisk1\DP(1)0-0+3
+  removable media
+  Mounted on \\.\d:
+
+
+NT Block Device Objects
+\\?\Device\CdRom0
+\\?\Device\Floppy0
+\\?\Device\Harddisk0\Partition0
+  link to \\?\Device\Harddisk0\DR0
+  Fixed hard disk media. Block size = 512
+\\?\Device\Harddisk0\Partition1
+  link to \\?\Device\HarddiskVolume1
+\\?\Device\Harddisk1\Partition0
+  link to \\?\Device\Harddisk1\DR2
+  Removable media other than floppy. Block size = 512
+\\?\Device\Harddisk1\Partition1
+  link to \\?\Device\Harddisk1\DP(1)0-0+3
+  Removable media other than floppy. Block size = 512
+
+Virtual devices
+/dev/zero
+/dev/random
+Using --progress
+
+--progress is an non-standard enhancement to dd which will show you progress as each block is copied.
+
+Virtual devices
+
+Virtual devices are a new feature in version 0.4beta1.
+
+Because windows does not have devices like the unix /dev/zero or /dev/random these have been implemented inside dd. You can use these as input files to supply an infinite amount of zeros or pseudo random data.
+
+Standard I/O
+
+Standard Input (stdin) is now the default input file if you do not specify a value for if. You can also explictly use stdin with if=-. Standard Out (stdout) is now the default output file if you do not specify a value for of. You can also explictly use stdout with of=-. Progress and error messages are written to Standard Error (stderr). This allows the use of dd with pipe commands.
+
+Safety with --filter=
+
+To prevent accidental overwriting of the wrong disk, a safety filter can be enforced. Available filters are:
+
+fixed	Only write to a fixed disk
+removable	Only write to a removable disk
+disk	Only write to any kind disk
+partition	Only write to a partition
+You can enforce a filter by renaming dd.exe to dd-<filter>.exe. For example, dd-removable.exe can only write to removable disks like USB and CF, making sure that you don't accidently write to a fixed hard disk.
+
+Examples
+
+Make an image of a floppy disk:
+
+dd if=\\.\a: of=c:\temp\disk1.img bs=1440k
+Write the image back to a floppy disk:
+
+dd if=c:\temp\disk1.img of=\\.\a: bs=1440k
+Rip an .iso from a CD
+
+dd if=\\?\Device\CdRom0 of=c:\temp\disc1.iso bs=1M
+Read a partition from a USB memory device
+
+dd if=\\.\Volume{c18588c0-02e9-11d8-853f-00902758442b} of=c:\temp\usb1.img bs=1M
+Read the entire USB memory device
+
+dd if=\\?\Device\Harddisk1\Partition0 of=c:\temp\usb2.img bs=1M --size --progress
+You can write to any file or block device which windows will allow you to write to. You can use the standard \\.\ notation for win32 exported devices or the dd specific \\?\ notation to access windows native devices.
+
+Note: You can not write to a CD with this program. Get microsoft cdburn from the windows XP resource kit.
+
+Note: Floppy disks are extremely unreliable. If you get errors, please try another floppy disk or reformatting the disk.

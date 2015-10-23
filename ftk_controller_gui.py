@@ -200,28 +200,37 @@ class FTKControllerGUI(wx.Frame):
 
     def OnQuit(self, e):       
         try:
-            dial = wx.MessageDialog(None, u'Do you want to close FTK Imager and all running instances?', 'Question',
-                                    wx.YES_NO | wx.YES_DEFAULT | wx.ICON_QUESTION)
-            if dial.ShowModal() == wx.ID_YES:
-                #FTKImager.ExitFTK()
-                FTKImager.pwa_app.Kill_()
+            dial = wx.MessageDialog(None, u'Do you want to close FTK Imager and all running instances?', 'Closing...',
+                                     wx.YES_NO | wx.CANCEL | wx.NO_DEFAULT | wx.ICON_QUESTION)
+            
+            result = dial.ShowModal()
+            if  result== wx.ID_YES:
+                FTKImager.ExitFTK()
+                #FTKImager.pwa_app.Kill_()
+                                 
         except Exception:
             logger.exception("Exception in closing FTK Imager")
         finally:
+            if result == wx.ID_CANCEL:
+                return  
             self.Destroy()
             exit()
        
 
     def OnClose(self, e):
         try:
-            dial = wx.MessageDialog(None, u'Do you want to close FTK Imager?', 'Question',
-                                    wx.YES_NO | wx.YES_DEFAULT | wx.ICON_QUESTION)
-            if dial.ShowModal() == wx.ID_YES:
+            dial = wx.MessageDialog(None, u'Do you want to close FTK Imager?', 'Closing...',
+                                    wx.YES_NO | wx.CANCEL | wx.NO_DEFAULT | wx.ICON_QUESTION)
+            result = dial.ShowModal()
+            if  result== wx.ID_YES:
                 FTKImager.ExitFTK()
                 #FTKImager.pwa_app.Kill_()
+            
         except Exception:
             logger.exception("Exception in closing FTK Imager")
         finally:
+            if result == wx.ID_CANCEL:
+                return                            
             self.Destroy()
             exit()
 
@@ -572,6 +581,8 @@ class PageUSB(wx.Panel):
     }    
     
     GUID_DEVINTERFACE_USB_DEVICE = "{A5DCBF10-6530-11D2-901F-00C04FB951ED}"
+    
+    usbDevices = []
 
     def __init__(self, parent):
         """Constructor"""
@@ -580,25 +591,30 @@ class PageUSB(wx.Panel):
         hbox = wx.BoxSizer(wx.HORIZONTAL)
         
         #3 rows, 4 columns, 9 vgap, 15 hgap
-        fgs = wx.FlexGridSizer(3, 4, 9, 15)
+        fgs = wx.FlexGridSizer(3, 3, 9, 15)
         
         tc_usb = wx.StaticText(self, label="USB Devices")
-     
-        
-        usb_list = self.CheckUSBDevices()        
-        self.cb_usb = wx.ComboBox(self, -1, "", choices=usb_list, style=wx.CB_READONLY)
-        self.cb_usb.SetValue(usb_list[0])  
+                     
+        self.cb_usb = wx.ComboBox(self, -1, "", style=wx.CB_READONLY)        
         bt_refresh = wx.Button(self, label="Refresh")    
-        
+                        
         self.Bind(wx.EVT_BUTTON, self.OnRefresh, id=bt_refresh.Id)
-             
-        fgs.AddMany([(tc_usb), (self.cb_usb, 0, wx.EXPAND), bt_refresh])
+        self.Bind(wx.EVT_COMBOBOX, self.OnSelectUSB)
         
+        self.usbID = wx.TextCtrl(self, style=wx.TE_READONLY)
+        self.usbSize = wx.TextCtrl(self, style=wx.TE_READONLY)
+            
+        fgs.AddMany([(tc_usb), (self.cb_usb, 0, wx.EXPAND), bt_refresh])
+        fgs.AddMany([(wx.StaticText(self, label="Device ID")), (self.usbID, 0, wx.EXPAND), (wx.StaticText(self, label=""))])
+        fgs.AddMany([(wx.StaticText(self, label="Device Size")), (self.usbSize, 0, wx.EXPAND), (wx.StaticText(self, label=""))])
+                
         #Make columns 1 full size of panel
         fgs.AddGrowableCol(1, 1)
         
         hbox.Add(fgs, proportion=1, flag=wx.ALL|wx.EXPAND, border=15)
         self.SetSizerAndFit(hbox)   
+        
+        self.OnRefresh(event=None)
             
         #sizer.Add(self.cb)
         #self.sizeCtrl = wx.TextCtrl(panel, -1, "", style=wx.TE_READONLY)
@@ -607,31 +623,48 @@ class PageUSB(wx.Panel):
         #logger.debug("Starting Thread")
         #self.worker = WorkerThread(self)            
         #self.TestDeviceNotifications()
-            
-        #except Exception, ex:
-            #logger.exception("Error in detecting USB device.")   
+        
+    def OnSelectUSB(self, event):
+        self.SetDeviceInfo()
             
     def OnRefresh(self, event):
         usb_list = self.CheckUSBDevices()       
         self.cb_usb.Clear()
         self.cb_usb.AppendItems(usb_list)
         self.cb_usb.SetValue(usb_list[0])
+        self.SetDeviceInfo()
             
-    def CheckUSBDevices(self):
-        usb_list = []
+    def SetDeviceInfo(self):
+        if len(self.usbDevices):
+            device = self.usbDevices[self.cb_usb.GetSelection()]
+            self.usbID.SetValue(device.Model)
+            self.usbSize.SetForegroundColour(wx.BLACK)
+            if device.Size > 0:                
+                self.usbSize.SetValue("{:.2f} GB".format( float(device.Size)/1024/1024/1024))   
+            else:
+                self.usbSize.SetValue("Cannot detect USB size. USB ejected?")
+                self.usbSize.SetForegroundColour(wx.RED)
+        else:
+            self.usbID.SetValue("")
+            self.usbSize.SetValue("")
+          
+    def CheckUSBDevices(self):        
         try:
             import wmi
             c = wmi.WMI ()
             usb_list = []
-            for physical_disk in c.Win32_DiskDrive ():
-                if 'Removable' in physical_disk.MediaType:
-                    logger.debug("USB: %s", physical_disk)
-                    usb_list.append("{0}: {1}".format(physical_disk.DeviceID, physical_disk.Caption))  
+            self.usbDevices = []
+            for physical_disk in c.Win32_DiskDrive():
+                if 'InterfaceType' in physical_disk.InterfaceType or 'USBSTOR' in physical_disk.PNPDeviceID:
+                    logger.debug("USB: %s", physical_disk)                    
+                    usb_list.append("{0}".format(physical_disk.DeviceID))  
+                    self.usbDevices.append(physical_disk)
         except Exception,e:
             logger.exception("Cannot detect USB devices")
         finally:
             if not len(usb_list):
-                usb_list.append("No USB detected yet")            
+                usb_list.append("No USB detected yet")  
+            logger.debug(type(usb_list[0]))
             return usb_list
             
     def OnResult(self, event):

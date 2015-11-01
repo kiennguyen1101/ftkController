@@ -33,10 +33,11 @@ class FTKController(object):
         # else try to start FTK Imager.
         w_handle = False
         try:
-            self.pwa_app.Start(path)
-            time.sleep(1)
-            w_handle = pywinauto.findwindows.find_window(
-                class_name='Afx:00400000:0')
+            if (path) :
+                self.pwa_app.Start(path)
+                time.sleep(1)
+                w_handle = pywinauto.findwindows.find_window(
+                    class_name='Afx:00400000:0')
         except Exception:
             logging.exception("Cannot start FTK Imager")
             return False
@@ -47,7 +48,8 @@ class FTKController(object):
             return True
 
     def ExitFTK(self):
-        self.imager.TypeKeys("%f x", 0.05)
+        if self.imager:
+            self.imager.TypeKeys("%f x", 0.05)
 
     def GetCustomContentSource(self, itemCount=0):
         #Try to get the custom content source from control bars 
@@ -156,6 +158,7 @@ class FTKController(object):
                 
         # Add all evidences in FTK Imager
         if len(evidenceTree.Roots()) <= 0:
+            self.imager.SetFocus()
             self.imager.TypeKeys("%f l", 0.05)
             
         return evidenceTree

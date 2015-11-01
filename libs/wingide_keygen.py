@@ -94,8 +94,8 @@ def AddHyphens(code):
 print("Wing IDE 5.0.8 KeyGen\n????????:EN123-12345-12345-12345 ???\n");
 LicenseID ='EN123-12345-12345-12345'
 #Copy the Request Code from the dialog
-#RequestCode ='RW52Q-KMA4R-QVFFM-V381D'
-RequestCode = input("???Request Code???:\n")
+RequestCode ='RW51J-XARXT-HTT17-EKE49'
+#RequestCode = input("???Request Code???:\n")
 
 hasher = sha.new()
 hasher.update(RequestCode)

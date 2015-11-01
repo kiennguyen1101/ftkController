@@ -172,6 +172,11 @@ class FTKControllerGUI(wx.Frame):
         except Exception, e:
             logger.exception("Error starting FTK Imager")
             pass
+        finally:
+            if not FTKImager.imager:
+                logger.critical("Cannot start FTK Imager.")
+                self.ShowError("The program cannot find FTK Imager. Please start FTK Imager and then restart this program.")
+                self.Close()
 
     def ShowStatusText(self, text):
         rect = self.GetClientRect()
@@ -200,12 +205,13 @@ class FTKControllerGUI(wx.Frame):
 
     def OnQuit(self, e):       
         try:
-            dial = wx.MessageDialog(None, u'Do you want to close FTK Imager and all running instances?', 'Closing...',
-                                     wx.YES_NO | wx.CANCEL | wx.NO_DEFAULT | wx.ICON_QUESTION)
-            
-            result = dial.ShowModal()
-            if  result== wx.ID_YES:
-                FTKImager.ExitFTK()
+            if FTKImager.imager:
+                dial = wx.MessageDialog(None, u'Do you want to close FTK Imager and all running instances?', 'Closing...',
+                                         wx.YES_NO | wx.CANCEL | wx.NO_DEFAULT | wx.ICON_QUESTION)
+                
+                result = dial.ShowModal()
+                if  result== wx.ID_YES:
+                    FTKImager.ExitFTK()
                 #FTKImager.pwa_app.Kill_()
                                  
         except Exception:
@@ -219,17 +225,19 @@ class FTKControllerGUI(wx.Frame):
 
     def OnClose(self, e):
         try:
-            dial = wx.MessageDialog(None, u'Do you want to close FTK Imager?', 'Closing...',
-                                    wx.YES_NO | wx.CANCEL | wx.NO_DEFAULT | wx.ICON_QUESTION)
-            result = dial.ShowModal()
-            if  result== wx.ID_YES:
-                FTKImager.ExitFTK()
-                #FTKImager.pwa_app.Kill_()
+            result = None
+            if FTKImager.imager:
+                dial = wx.MessageDialog(None, u'Do you want to close FTK Imager?', 'Closing...',
+                                        wx.YES_NO | wx.CANCEL | wx.NO_DEFAULT | wx.ICON_QUESTION)
+                result = dial.ShowModal()
+                if  result== wx.ID_YES:
+                    FTKImager.ExitFTK()
+                    #FTKImager.pwa_app.Kill_()
             
         except Exception:
             logger.exception("Exception in closing FTK Imager")
-        finally:
-            if result == wx.ID_CANCEL:
+        finally:            
+            if  result == wx.ID_CANCEL:
                 return                            
             self.Destroy()
             exit()
@@ -590,8 +598,8 @@ class PageUSB(wx.Panel):
 
         hbox = wx.BoxSizer(wx.HORIZONTAL)
         
-        #3 rows, 4 columns, 9 vgap, 15 hgap
-        fgs = wx.FlexGridSizer(3, 3, 9, 15)
+        #4 rows, 3 columns, 9 vgap, 15 hgap
+        fgs = wx.FlexGridSizer(4, 3, 9, 15)
         
         tc_usb = wx.StaticText(self, label="USB Devices")
                      
@@ -603,15 +611,34 @@ class PageUSB(wx.Panel):
         
         self.usbID = wx.TextCtrl(self, style=wx.TE_READONLY)
         self.usbSize = wx.TextCtrl(self, style=wx.TE_READONLY)
+        
+        sampleList = ['zero', 'one', 'two', 'three', 'four', 'five',
+              'six', 'seven', 'eight']
+        
+        rb = wx.RadioBox(
+            self, wx.ID_ANY, "wx.RadioBox", wx.DefaultPosition,
+            wx.DefaultSize, sampleList, 3, wx.RA_SPECIFY_COLS
+        )        
+        
+        bagSizer    = wx.GridBagSizer(hgap=5, vgap=5)
+        bagSizer.Add(rb, pos=(0,0), span=(3,2))
             
         fgs.AddMany([(tc_usb), (self.cb_usb, 0, wx.EXPAND), bt_refresh])
         fgs.AddMany([(wx.StaticText(self, label="Device ID")), (self.usbID, 0, wx.EXPAND), (wx.StaticText(self, label=""))])
         fgs.AddMany([(wx.StaticText(self, label="Device Size")), (self.usbSize, 0, wx.EXPAND), (wx.StaticText(self, label=""))])
-                
+       
+       
+               
+        fgs.SetFlexibleDirection(wx.BOTH)
         #Make columns 1 full size of panel
         fgs.AddGrowableCol(1, 1)
         
-        hbox.Add(fgs, proportion=1, flag=wx.ALL|wx.EXPAND, border=15)
+        hbox1 = wx.BoxSizer(wx.VERTICAL)
+        hbox2 = wx.BoxSizer(wx.VERTICAL)
+        
+        hbox1.Add(fgs, proportion=1, flag=wx.ALL|wx.EXPAND, border=15)
+        hbox2.Add(bagSizer,proportion=1, flag=wx.ALL|wx.EXPAND, border=15)
+        hbox.AddMany([hbox1, hbox2])
         self.SetSizerAndFit(hbox)   
         
         self.OnRefresh(event=None)
